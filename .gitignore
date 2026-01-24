@@ -1,0 +1,6 @@
+# build files
+.zig-cache
+zig-out
+
+# ide files
+.idea

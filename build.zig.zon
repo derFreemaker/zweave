@@ -1,0 +1,23 @@
+.{
+    .name = .zweave,
+    .version = "0.1.0",
+    .fingerprint = 0x51d95e5a517bdd1c, // Changing this has security and trust implications.
+    .minimum_zig_version = "0.15.2",
+    .dependencies = .{
+        .zttio = .{
+            .url = "git+https://github.com/derFreemaker/zttio#520a869ea1cd0bdab9995ae7ee0d34e32787194b",
+            .hash = "zttio-0.2.0-e5eFcFpOAwAIKP6k8corpee4JBQXcAiXhmoVa9uKm_iU",
+        },
+        .uucode = .{
+            .url = "git+https://github.com/jacobsandlund/uucode#5f05f8f83a75caea201f12cc8ea32a2d82ea9732",
+            .hash = "uucode-0.1.0-ZZjBPj96QADXyt5sqwBJUnhaDYs_qBeeKijZvlRa0eqM",
+        },
+    },
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+        "LICENSE",
+        "README.md",
+    },
+}

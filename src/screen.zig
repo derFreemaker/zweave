@@ -171,7 +171,7 @@ pub fn write(self: *Screen, col: u16, row: u16, content: []const u8, opts: Write
 
     var cur_col: u16 = col;
     const cur_row: u16 = row;
-    var grapheme_iter = Unicode.graphemeIterator(content);
+    var grapheme_iter = Unicode.GraphemeIterator.init(content);
     while (grapheme_iter.next()) |grapheme| {
         cur_col += try self.writeCell(cur_col, cur_row, grapheme.bytes(content), .{
             .style = opts.style,

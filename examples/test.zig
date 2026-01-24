@@ -11,7 +11,14 @@ pub fn main() !u8 {
     defer if (gpa.deinit() == .leak) @panic("memory leaks");
     const allocator = gpa.allocator();
 
-    var tty = try zttio.Tty.init(allocator, allocator, .stdin(), .stdout(), null, .{});
+    var tty = try zttio.Tty.init(
+        allocator,
+        allocator,
+        .stdout(),
+        .stdin(),
+        null,
+        .{},
+    );
     defer tty.deinit();
 
     try tty.enableAndResetAlternativeScreen();
@@ -19,7 +26,11 @@ pub fn main() !u8 {
     try tty.hideCursor();
     try tty.flush();
 
-    var screen = try zweave.Screen.init(allocator, tty.getWinsize(), tty.caps.unicode_width_method);
+    var screen = try zweave.Screen.init(
+        allocator,
+        tty.getWinsize(),
+        tty.caps.unicode_width_method,
+    );
     defer screen.deinit();
 
     while (true) {

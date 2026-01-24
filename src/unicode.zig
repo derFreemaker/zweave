@@ -55,7 +55,3 @@ pub const GraphemeIterator = struct {
         return null;
     }
 };
-
-pub fn graphemeIterator(str: []const u8) GraphemeIterator {
-    return GraphemeIterator.init(str);
-}

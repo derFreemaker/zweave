@@ -8,7 +8,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     }).module("zttio");
-    
+
     const uucode_mod = b.dependency("uucode", .{
         .target = target,
         .optimize = optimize,

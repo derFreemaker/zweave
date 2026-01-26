@@ -7,6 +7,8 @@ pub fn IndexT(comptime ParentT: type, comptime T: type) type {
     if (@typeInfo(T) != .int) @compileError("expected T is of type 'int'");
 
     return enum(T) {
+        pub const UnderlyingT = T;
+
         const Self = @This();
 
         invalid = std.math.maxInt(T),

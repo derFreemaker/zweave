@@ -28,6 +28,11 @@ pub fn HandleStoreT(comptime ParentT: type, comptime T: type) type {
             }
         }
 
+        pub fn clear(self: *Self) void {
+            self.free_handles.clearRetainingCapacity();
+            self.handles.clearRetainingCapacity();
+        }
+
         pub fn create(self: *Self, allocator: std.mem.Allocator) std.mem.Allocator.Error!Handle {
             if (comptime buildingSafe) {
                 if (self.free_handles.getLastOrNull()) |handle_index| {

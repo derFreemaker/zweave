@@ -5,6 +5,4 @@ const Renderer = @This();
 prev: *Screen,
 next: *Screen,
 
-pub fn init() Renderer {
-    
-}
+pub fn init() Renderer {}

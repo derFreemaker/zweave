@@ -1,7 +1,10 @@
 const std = @import("std");
 
+const Screen = @import("screen.zig");
 const IndexT = @import("index.zig").IndexT;
 const HandleStoreT = @import("handles.zig").HandleStoreT;
+
+const LayoutConstraints = @import("layout_constraints.zig");
 
 const ElementIndex = IndexT(Element, u32);
 
@@ -45,50 +48,54 @@ pub const Tree = struct {
         self.extra.clearRetainingCapacity();
     }
 
-    pub fn createElement(self: *Tree, ptr: *anyopaque, children: []ElementIndex) std.mem.Allocator.Error!ElementIndex {
+    pub fn createElement(self: *Tree, ptr: *anyopaque, vtable: *const Element.VTable) std.mem.Allocator.Error!ElementIndex {
         // return try self.element_store.create(self.allocator);
 
-        var i: usize = 0;
-        errdefer self.extra.items.len -= i;
-        if (children.len > 0) {
-            try self.extra.append(self.allocator, children.len);
-            errdefer self.extra.pop();
-
-            for (children) |child| {
-                errdefer self.extra.items.len -= i;
-                try self.extra.append(self.allocator, child.value());
-                i += 1;
-            }
-
-            i += 1;
-        }
-
         const index = ElementIndex.from(self.elements.items.len);
-        const element = try self.elements.addOne();
+        const element = try self.elements.addOne(self.allocator);
         errdefer _ = self.elements.pop();
         element.* = Element{
             .ptr = ptr,
-            .children_index = if (children.len == 0)
-                .invalid
-            else
-                Element.ChildrenIndex.from(self.extra.items.len - i),
+            .vtable = vtable,
         };
 
         return index;
+    }
+
+    pub fn addChildren(self: *Tree, element: ElementIndex, children: []ElementIndex) std.mem.Allocator.Error!void {
+        try self.extra.ensureUnusedCapacity(self.allocator, children.len + 1);
+
+        self.elements.items[element.value()].children_index = Element.ChildrenIndex.from(self.extra.items.len);
+        self.extra.appendAssumeCapacity(children.len);
+        self.extra.appendSliceAssumeCapacity(@as([]ElementIndex.UnderlyingT, @ptrCast(children)));
     }
 };
 
 pub const Element = struct {
     pub const ChildrenIndex = IndexT(struct {}, u32);
 
+    pub const VTable = struct {
+        registerInLayout: ?*const fn (self_ptr: *anyopaque, tree: *Tree) std.mem.Allocator.Error!void = null,
+        getLayoutConstraints: *const fn (self_ptr: *anyopaque) LayoutConstraints,
+        calcLayout: ?*const fn (self_ptr: *anyopaque, available: SmallVec2) SmallVec2 = null,
+        draw: *const fn (self_ptr: *anyopaque, view: Screen.View) std.mem.Allocator.Error!void = null,
+    };
+
     ptr: *anyopaque,
+    vtable: *const VTable,
     // handle: ElementHandle,
     children_index: ChildrenIndex = .invalid,
 
     pub fn children(self: Element, tree: *const Tree) []ElementIndex {
         if (self.children_index == .invalid) return &.{};
 
-        const count = tree.extra.items[self.children_index].index;
-        return tree.extra.items[self.children_index + 1 ..][0..count];
+        const count = tree.extra.items[self.children_index];
+        const childs: []ElementIndex = @ptrCast(tree.extra.items[self.children_index + 1 ..][0..count]);
+        return childs;
     }
+};
+
+pub const SmallVec2 = struct {
+    x: u16,
+    y: u16,
 };

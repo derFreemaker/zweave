@@ -246,13 +246,13 @@ pub fn renderDirect(self: *const Screen, tty: *zttio.Tty) std.Io.Writer.Error!vo
     }
 }
 
-pub fn view(self: *Screen, col: u16, row: u16, width: ?u16, height: ?u16, overflow: Overflow) ScreenView {
+pub fn view(self: *Screen, col: u16, row: u16, width: ?u16, height: ?u16, overflow: Overflow) View {
     const w = width orelse self.winsize.cols - col;
     const h = height orelse self.winsize.rows - row;
     std.debug.assert(col + w <= self.winsize.cols);
     std.debug.assert(row + h <= self.winsize.rows);
 
-    return ScreenView{
+    return View{
         .screen = self,
         .col = col,
         .row = row,
@@ -262,7 +262,7 @@ pub fn view(self: *Screen, col: u16, row: u16, width: ?u16, height: ?u16, overfl
     };
 }
 
-pub const ScreenView = struct {
+pub const View = struct {
     screen: *Screen,
 
     col: u16,
@@ -271,30 +271,30 @@ pub const ScreenView = struct {
     height: u16,
     overflow: Overflow,
 
-    pub inline fn strWidth(self: *const ScreenView, str: []const u8) usize {
+    pub inline fn strWidth(self: *const View, str: []const u8) usize {
         return self.screen.strWidth(str);
     }
 
-    pub inline fn registerStyle(self: *ScreenView, style: Styling.Style) std.mem.Allocator.Error!Styling.Index {
+    pub inline fn registerStyle(self: *View, style: Styling.Style) std.mem.Allocator.Error!Styling.Index {
         return self.screen.registerStyle(style);
     }
 
-    pub inline fn getStyle(self: *const ScreenView, index: Styling.Index) ?Styling.Style {
+    pub inline fn getStyle(self: *const View, index: Styling.Index) ?Styling.Style {
         return self.screen.getStyle(index);
     }
 
-    pub inline fn registerBlock(self: *ScreenView, block: Block) std.mem.Allocator.Error!Block.Index {
+    pub inline fn registerBlock(self: *View, block: Block) std.mem.Allocator.Error!Block.Index {
         return self.screen.registerBlock(block);
     }
 
-    pub inline fn getBlock(self: *const ScreenView, index: Block.Index) ?Block {
+    pub inline fn getBlock(self: *const View, index: Block.Index) ?Block {
         return self.screen.getBlock(index);
     }
 
     /// zero-based indexing
     ///
     /// asserts that you are writing inside the view if `.no_overflow`
-    pub inline fn writeCell(self: *ScreenView, col: u16, row: u16, content: []const u8, opts: WriteOptions) std.mem.Allocator.Error!u16 {
+    pub inline fn writeCell(self: *View, col: u16, row: u16, content: []const u8, opts: WriteOptions) std.mem.Allocator.Error!u16 {
         if (self.overflow == .no_overflow) {
             std.debug.assert(col < self.width);
             std.debug.assert(row < self.height);
@@ -308,7 +308,7 @@ pub const ScreenView = struct {
     /// zero-based indexing
     ///
     /// asserts that you are writing inside the view if `.no_overflow`
-    pub inline fn write(self: *ScreenView, col: u16, row: u16, content: []const u8, opts: WriteOptions) std.mem.Allocator.Error!u16 {
+    pub inline fn write(self: *View, col: u16, row: u16, content: []const u8, opts: WriteOptions) std.mem.Allocator.Error!u16 {
         if (self.overflow == .no_overflow) {
             std.debug.assert(col < self.width);
             std.debug.assert(row < self.height);
@@ -322,7 +322,7 @@ pub const ScreenView = struct {
     /// zero-based indexing
     ///
     /// asserts that you are reading inside the view
-    pub inline fn readCell(self: *const ScreenView, col: u16, row: u16) Cell {
+    pub inline fn readCell(self: *const View, col: u16, row: u16) Cell {
         std.debug.assert(col < self.width);
         std.debug.assert(row < self.height);
 
@@ -332,7 +332,7 @@ pub const ScreenView = struct {
     /// zero-based indexing
     ///
     /// asserts that you are reading inside the view
-    pub inline fn getCellIndex(self: *const ScreenView, col: u16, row: u16) Cell.Index {
+    pub inline fn getCellIndex(self: *const View, col: u16, row: u16) Cell.Index {
         std.debug.assert(col < self.width);
         std.debug.assert(row < self.height);
 
@@ -340,7 +340,7 @@ pub const ScreenView = struct {
     }
 
     /// asserts that you are slicing inside the view if `.no_overflow`
-    pub fn view(self: *const ScreenView, col: u16, row: u16, width: ?u16, height: ?u16, overflow: Overflow) ScreenView {
+    pub fn view(self: *const View, col: u16, row: u16, width: ?u16, height: ?u16, overflow: Overflow) View {
         var w = width orelse self.width - col;
         var h = height orelse self.height - row;
         if (self.overflow == .no_overflow) {
@@ -351,7 +351,7 @@ pub const ScreenView = struct {
             h = self.height - @min(self.height, row);
         }
 
-        return ScreenView{
+        return View{
             .screen = self.screen,
             .col = self.col + col,
             .row = self.row + row,

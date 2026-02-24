@@ -10,82 +10,85 @@ pub fn HandleStoreT(comptime ParentT: type, comptime T: type) type {
         const Self = @This();
 
         free_handles: std.ArrayList(T),
-        handles: if (buildingSafe) std.ArrayList(T) else *usize,
+        handles: if (buildingSafe) std.ArrayList(T) else usize,
 
         pub fn init(allocator: std.mem.Allocator, capacity: usize) std.mem.Allocator.Error!Self {
             return Self{
                 .free_handles = try .initCapacity(allocator, capacity),
-                .handles = if (comptime buildingSafe) try .initCapacity(allocator, capacity) else try allocator.create(usize),
+                .handles = if (comptime buildingSafe) try .initCapacity(allocator, capacity) else 0,
             };
         }
 
         pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
+            self.free_handles.deinit(allocator);
+
             if (comptime buildingSafe) {
-                self.free_handles.deinit(allocator);
                 self.handles.deinit(allocator);
-            } else {
-                self.free_handles.deinit(allocator);
             }
         }
 
         pub fn clear(self: *Self) void {
             self.free_handles.clearRetainingCapacity();
-            self.handles.clearRetainingCapacity();
+
+            if (comptime buildingSafe) {
+                self.handles.clearRetainingCapacity();
+            } else {
+                self.handles = 0;
+            }
+        }
+
+        pub fn isValid(self: *const Self, handle: Handle) bool {
+            if (comptime buildingSafe) {
+                return self.handles.items.len > handle.index and
+                    self.handles.items[handle.index] == handle.generation;
+            } else {
+                return self.handles > handle.index;
+            }
         }
 
         pub fn create(self: *Self, allocator: std.mem.Allocator) std.mem.Allocator.Error!Handle {
-            if (comptime buildingSafe) {
-                if (self.free_handles.getLastOrNull()) |handle_index| {
-                    return Handle{
-                        .index = handle_index,
-                        .generation = self.handles[handle_index],
-                    };
-                }
+            if (self.free_handles.getLastOrNull()) |handle_index| {
+                _ = self.free_handles.pop();
 
+                return Handle{
+                    .index = handle_index,
+                    .generation = if (comptime buildingSafe) self.handles.items[handle_index] else void{},
+                };
+            }
+
+            if (comptime buildingSafe) {
                 const gen = try self.handles.addOne(allocator);
-                try self.handles.ensureTotalCapacityPrecise(allocator, self.handles.capacity);
+                try self.free_handles.ensureTotalCapacityPrecise(allocator, self.handles.capacity);
                 gen.* = 0;
 
                 return Handle{
-                    .index = self.handles.items.len - 1,
+                    .index = @intCast(self.handles.items.len - 1),
                     .generation = 0,
                 };
             } else {
-                if (self.free_handles.getLastOrNull()) |handle_index| {
-                    return Handle{
-                        .index = handle_index,
-                        .generation = void{},
-                    };
-                }
-
                 const handle = Handle{
-                    .index = self.handles.*,
+                    .index = self.handles,
                     .generation = void{},
                 };
-                self.handles.* += 1;
-                try self.free_handles.ensureTotalCapacity(allocator, self.handles.*);
+                self.handles += 1;
+                try self.free_handles.ensureTotalCapacity(allocator, self.handles);
 
                 return handle;
             }
         }
 
         pub fn remove(self: *Self, handle: Handle) void {
-            if (comptime !buildingSafe) {
-                return;
+            if (!self.isValid(handle)) return;
+
+            if (comptime buildingSafe) {
+                self.handles.items[handle.index] +|= 1;
             }
 
-            if (!self.isValid(handle)) return;
-            self.handles.items[handle.index] +|= 1;
             self.free_handles.appendAssumeCapacity(handle.index);
         }
 
-        pub fn isValid(self: *const Self, handle: Handle) bool {
-            if (comptime buildingSafe) {
-                if (self.handles.items.len <= handle.index) return false;
-                return self.handles.items[handle.index] == handle.generation;
-            } else {
-                return self.handles.* <= handle.index;
-            }
+        pub fn count(self: *const Self) usize {
+            return if (comptime buildingSafe) self.handles.items.len else self.handles;
         }
     };
 }

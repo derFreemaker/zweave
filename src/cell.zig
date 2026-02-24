@@ -10,7 +10,7 @@ pub const Index = IndexT(Cell, u32);
 
 content: Content = .{ .char = ' ' },
 style: Styling.Index = .invalid,
-block: Block.Index = .invalid,
+block: Segment.Index = .invalid,
 
 comptime {
     std.debug.assert(@sizeOf(Cell) == 16);
@@ -38,6 +38,8 @@ pub fn eql(self: Cell, other: Cell, self_str_pool: []const u8, other_str_pool: [
     }
 }
 
+// we can use up to 11 bytes for data with tag thats 12 bytes
+// since we use at least 8 bytes for data and get padded up to 12 bytes anyway
 pub const Content = union(enum) {
     char: u8,
     /// null terminated if not fully used
@@ -54,18 +56,18 @@ pub const Content = union(enum) {
     wide_continuation,
 };
 
-pub const Block = struct {
-    pub const Index = IndexT(Block, u16);
+pub const Segment = struct {
+    pub const Index = IndexT(Segment, u16);
 
     hyperlink: ?zttio.ctlseqs.Hyperlink = null,
 
-    pub fn begin(self: *const Block, writer: *std.Io.Writer) std.Io.Writer.Error!void {
+    pub fn begin(self: *const Segment, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         if (self.hyperlink) |hyperlink| {
             try hyperlink.introduce(writer);
         }
     }
 
-    pub fn end(self: *const Block, writer: *std.Io.Writer) std.Io.Writer.Error!void {
+    pub fn end(self: *const Segment, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         if (self.hyperlink) |_| {
             try writer.writeAll(zttio.ctlseqs.Hyperlink.close);
         }

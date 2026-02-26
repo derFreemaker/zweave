@@ -9,6 +9,8 @@ const Renderer = @This();
 prev: *Screen,
 next: *Screen,
 
+last: i128 = 0,
+
 pub fn init(allocator: std.mem.Allocator, winsize: zttio.Winsize, unicode_width_method: zttio.gwidth.Method) std.mem.Allocator.Error!Renderer {
     var first_screen = try allocator.create(Screen);
     first_screen.* = try Screen.init(allocator, winsize, unicode_width_method);
@@ -38,6 +40,14 @@ pub inline fn getScreen(self: *const Renderer) *Screen {
 
 pub fn render(self: *Renderer, tty: *zttio.Tty) error{UnableToRender}!void {
     const next = self.next;
+
+    const now = std.time.nanoTimestamp();
+    const fps_str = std.fmt.allocPrint(next.allocator, "FPS {d}", .{@divFloor(60_000_000_000, now - self.last)}) catch return error.UnableToRender;
+    defer next.allocator.free(fps_str);
+    self.last = now;
+
+    _ = next.write(0, 0, fps_str, .{}) catch return error.UnableToRender;
+
     next.renderDirect(tty) catch return error.UnableToRender;
 
     self.next = self.prev;

@@ -58,6 +58,8 @@ pub fn init(allocator: std.mem.Allocator) InitError!Manager {
 }
 
 pub fn deinit(self: *Manager) void {
+    self.arena.deinit();
+
     self.tree.deinit();
     self.renderer.deinit(self.allocator);
     self.tty.deinit();
@@ -68,9 +70,11 @@ pub const RenderError = error{
 } || std.mem.Allocator.Error;
 
 pub fn renderNextFrame(self: *Manager) RenderError!void {
+    _ = self.arena.reset(.{ .retain_with_limit = 1024 * 1024 });
     const arena_allocator = self.arena.allocator();
 
     var screen = self.renderer.getScreen();
+    screen.clear();
 
     const root = self.tree.get(self.root);
     const needed_space = try root.interface.vtable.computeLayout.?(&Element.CalcLayoutContext{
@@ -86,7 +90,7 @@ pub fn renderNextFrame(self: *Manager) RenderError!void {
         },
     });
 
-    const root_view = screen.view(0, 0, needed_space.x, needed_space.y, .no_overflow);
+    const root_view = screen.view(0, 0, needed_space.x, needed_space.y, .allow_overflow);
     try root.interface.vtable.draw(&Element.DrawContext{
         .self = root,
         .self_handle = self.root,

@@ -4,6 +4,9 @@ const zttio = @import("zttio");
 const zweave = @import("zweave");
 
 const Block = struct {
+    width: f32,
+    height: f32,
+
     pub fn element(self: *Block) zweave.Element.Interface {
         return .{ .ptr = self, .vtable = &.{
             .getLayoutConstraints = getLayoutConstraints,
@@ -12,11 +15,11 @@ const Block = struct {
     }
 
     pub fn getLayoutConstraints(ctx: *const zweave.Element.GetLayoutConstraintsContext) zweave.Element.GetLayoutConstraintsError!zweave.LayoutConstraints {
-        _ = ctx;
+        const self: *Block = @ptrCast(@alignCast(ctx.self.interface.ptr));
 
         return zweave.LayoutConstraints{
-            .height = .{ .percentage = 0.5 },
-            .width = .{ .percentage = 1 },
+            .height = .{ .percentage = self.height },
+            .width = .{ .percentage = self.width },
         };
     }
 
@@ -125,13 +128,22 @@ pub fn main() !u8 {
     try manager.tty.hideCursor();
     try manager.tty.flush();
 
-    var block = Block{};
+    var block = Block{
+        .width = 0.3,
+        .height = 0.2,
+    };
     const block_handle = try manager.tree.create(block.element());
     try manager.tree.addChildren(manager.root, &.{block_handle});
 
     try manager.renderNextFrame();
 
     while (true) {
+        try manager.renderNextFrame();
+
+        if (manager.tty.reader.queue.isEmpty()) {
+            continue;
+        }
+
         var event = manager.tty.nextEvent();
         defer event.deinit(allocator);
 
@@ -139,6 +151,14 @@ pub fn main() !u8 {
             .key_press => |key_press| {
                 if (key_press.matches('c', .{ .ctrl = true })) {
                     break;
+                } else if (key_press.matches(zttio.Key.left, .{})) {
+                    block.width -= 0.1;
+                } else if (key_press.matches(zttio.Key.right, .{})) {
+                    block.width += 0.1;
+                } else if (key_press.matches(zttio.Key.up, .{})) {
+                    block.height -= 0.1;
+                } else if (key_press.matches(zttio.Key.down, .{})) {
+                    block.height += 0.1;
                 }
             },
             else => {},

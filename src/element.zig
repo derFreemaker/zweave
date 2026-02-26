@@ -31,7 +31,7 @@ pub const GetLayoutConstraintsContext = struct {
     allocator: std.mem.Allocator,
     tree: *const Tree,
 
-    self: *Element,
+    self: *const Element,
     self_handle: Element.Handle,
 };
 
@@ -41,7 +41,7 @@ pub const CalcLayoutContext = struct {
     allocator: std.mem.Allocator,
     tree: *const Tree,
 
-    self: *Element,
+    self: *const Element,
     self_handle: Element.Handle,
 
     available: SmallVec2,
@@ -51,7 +51,7 @@ pub const CalcLayoutContext = struct {
 pub const DrawError = std.mem.Allocator.Error;
 
 pub const DrawContext = struct {
-    self: *Element,
+    self: *const Element,
     self_handle: Element.Handle,
 
     view: Screen.View,

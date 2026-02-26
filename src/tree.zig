@@ -66,14 +66,19 @@ pub fn create(self: *Tree, interface: Element.Interface) std.mem.Allocator.Error
     return handle;
 }
 
-pub fn get(self: *Tree, handle: Element.Handle) *Element {
+pub fn get(self: *const Tree, handle: Element.Handle) *const Element {
+    std.debug.assert(self.isValid(handle));
+    return &self.elements.items[handle.index];
+}
+
+pub fn getMut(self: *Tree, handle: Element.Handle) *Element {
     std.debug.assert(self.isValid(handle));
     return &self.elements.items[handle.index];
 }
 
 pub fn addChildren(self: *Tree, handle: Element.Handle, children: []const Element.Handle) std.mem.Allocator.Error!void {
     std.debug.assert(self.isValid(handle));
-    const element = self.get(handle);
+    const element = self.getMut(handle);
 
     try element.children.ensureUnusedCapacity(self.allocator, children.len);
     for (children) |child| {

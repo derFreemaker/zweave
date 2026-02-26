@@ -10,9 +10,9 @@ pub fn HandleStoreT(comptime ParentT: type, comptime T: type) type {
         const Self = @This();
 
         free_handles: std.ArrayList(T),
-        handles: if (buildingSafe) std.ArrayList(T) else usize,
+        handles: if (buildingSafe) std.ArrayList(T) else T,
 
-        pub fn init(allocator: std.mem.Allocator, capacity: usize) std.mem.Allocator.Error!Self {
+        pub fn init(allocator: std.mem.Allocator, capacity: T) std.mem.Allocator.Error!Self {
             return Self{
                 .free_handles = try .initCapacity(allocator, capacity),
                 .handles = if (comptime buildingSafe) try .initCapacity(allocator, capacity) else 0,

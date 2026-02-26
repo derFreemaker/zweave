@@ -77,7 +77,7 @@ pub fn renderNextFrame(self: *Manager) RenderError!void {
         .allocator = arena_allocator,
         .tree = &self.tree,
 
-        .self_ptr = root.interface.ptr,
+        .self = root,
         .self_handle = self.root,
 
         .available = .{
@@ -88,7 +88,7 @@ pub fn renderNextFrame(self: *Manager) RenderError!void {
 
     const root_view = screen.view(0, 0, needed_space.x, needed_space.y, .no_overflow);
     try root.interface.vtable.draw(&Element.DrawContext{
-        .self_ptr = root.interface.ptr,
+        .self = root,
         .self_handle = self.root,
 
         .view = root_view,

@@ -18,8 +18,6 @@ pub fn element(self: *Container) Element.Interface {
 }
 
 pub fn getLayoutConstraints(ctx: *const Element.GetLayoutConstraintsContext) Element.GetLayoutConstraintsError!LayoutConstraints {
-    // return try LayoutConstraints.computeLayoutConstraint(ctx.allocator, ctx.tree, ctx.self.children.items, .{});
-
     _ = ctx;
 
     return LayoutConstraints{
@@ -33,14 +31,42 @@ pub fn getLayoutConstraints(ctx: *const Element.GetLayoutConstraintsContext) Ele
 }
 
 pub fn computeLayout(ctx: *const Element.CalcLayoutContext) Element.CalcLayoutError!Element.SmallVec2 {
-    return try LayoutConstraints.computeLayout(
-        ctx.allocator,
-        ctx.tree,
-        ctx.self.children.items,
-        .{
-            .available = ctx.available,
-        },
-    );
+    const childs = ctx.self.children.items;
+
+    var child_constraints = try ctx.allocator.alloc(LayoutConstraints, childs.len);
+    defer ctx.allocator.free(child_constraints);
+    for (childs, 0..) |child_handle, i| {
+        const child_element = ctx.tree.get(child_handle);
+
+        child_constraints[i] = try child_element.interface.vtable.getLayoutConstraints(&Element.GetLayoutConstraintsContext{
+            .allocator = ctx.allocator,
+            .tree = ctx.tree,
+
+            .self = child_element,
+            .self_handle = child_handle,
+        });
+    }
+
+    var budget = ctx.available;
+    var child_sizes = try ctx.allocator.alloc(Element.SmallVec2, childs.len);
+    defer ctx.allocator.free(child_sizes);
+    for (child_constraints, 0..) |child_constraint, i| {
+        const child_size = &child_sizes[i];
+
+        switch (child_constraint.width) {
+            .fixed => |fixed| {
+                budget.x -= fixed;
+                child_size.x += fixed;
+            },
+        }
+
+        switch (child_constraint.height) {
+            .fixed => |fixed| {
+                budget.y -= fixed;
+                child_size.y += fixed;
+            },
+        }
+    }
 }
 
 pub fn draw(ctx: *const Element.DrawContext) Element.DrawError!void {

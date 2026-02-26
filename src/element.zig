@@ -35,7 +35,7 @@ pub const GetLayoutConstraintsContext = struct {
     self_handle: Element.Handle,
 };
 
-pub const CalcLayoutError = std.mem.Allocator.Error;
+pub const CalcLayoutError = DrawError || std.mem.Allocator.Error;
 
 pub const CalcLayoutContext = struct {
     allocator: std.mem.Allocator,

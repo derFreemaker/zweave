@@ -20,7 +20,7 @@ pub fn eql(self: Cell, other: Cell, self_str_pool: []const u8, other_str_pool: [
     if (!self.style.eql(other.style)) return false;
     if (!self.block.eql(other.block)) return false;
 
-    if (std.meta.activeTag(self) != std.meta.activeTag(other)) return false;
+    if (std.meta.activeTag(self.content) != std.meta.activeTag(other.content)) return false;
     switch (self.content) {
         .char => |c| {
             return c == other.content.char;

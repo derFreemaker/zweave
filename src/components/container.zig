@@ -61,7 +61,7 @@ pub fn computeLayout(ctx: *const Element.CalcLayoutContext) Element.CalcLayoutEr
                 child_data.size.x += fixed;
             },
             .percentage => |perc| {
-                const width: u16 = @intFromFloat(@floor(@as(f32, @floatFromInt(ctx.available.x)) * perc));
+                const width: u16 = @intFromFloat(@as(f32, @floatFromInt(ctx.available.x)) * perc);
 
                 if (width > budget.x) {
                     child_data.is_overflowing = true;
@@ -84,7 +84,7 @@ pub fn computeLayout(ctx: *const Element.CalcLayoutContext) Element.CalcLayoutEr
                 child_data.size.y += fixed;
             },
             .percentage => |perc| {
-                const height: u16 = @intFromFloat(@floor(@as(f32, @floatFromInt(ctx.available.y)) * perc));
+                const height: u16 = @intFromFloat(@as(f32, @floatFromInt(ctx.available.y)) * perc);
 
                 if (height > budget.y) {
                     child_data.is_overflowing = true;

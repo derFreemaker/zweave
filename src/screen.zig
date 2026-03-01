@@ -28,7 +28,7 @@ width_method: zttio.gwidth.Method = .wcwidth,
 // cursor_shape: zttio.ctlseqs.Cursor.Shape = .blinking_bar,
 
 pub fn init(allocator: std.mem.Allocator, winsize: zttio.Winsize, width_method: zttio.gwidth.Method) std.mem.Allocator.Error!Screen {
-    const buf = try allocator.alloc(Cell, winsize.cols * winsize.rows);
+    const buf = try allocator.alloc(Cell, @as(usize, winsize.cols) * @as(usize, winsize.rows));
     errdefer allocator.free(buf);
     @memset(buf, Cell{});
 
@@ -62,7 +62,7 @@ pub fn deinit(self: *Screen) void {
     self.segments.deinit(self.allocator);
 }
 
-/// this doesn't clear any data leaving it in an undefined buffer state
+/// this doesn't clear any data leaving the buffer in an undefined state
 pub fn resize(self: *Screen, new_winsize: zttio.Winsize) std.mem.Allocator.Error!void {
     if (std.mem.eql(u8, std.mem.asBytes(&self.winsize), std.mem.asBytes(&new_winsize))) {
         return;
@@ -70,20 +70,20 @@ pub fn resize(self: *Screen, new_winsize: zttio.Winsize) std.mem.Allocator.Error
 
     self.winsize = new_winsize;
 
-    const new_capacity = new_winsize.cols * new_winsize.rows;
-    if (new_capacity < self.capacity) {
+    const new_capacity: usize = @as(usize, new_winsize.cols) * @as(usize, new_winsize.rows);
+    if (new_capacity <= self.capacity) {
         self.buf.len = new_capacity;
         return;
     }
 
-    const old_memory = self.buf;
-    if (self.allocator.remap(old_memory, new_capacity)) |new_memory| {
-        self.buf = new_memory;
+    const old_memory = self.buf.ptr[0..self.capacity];
+    if (self.allocator.resize(old_memory, new_capacity)) {
+        self.buf.len = new_capacity;
     } else {
         self.allocator.free(old_memory);
         self.buf = try self.allocator.alloc(Cell, new_capacity);
     }
-    self.capacity = self.buf.len;
+    self.capacity = new_capacity;
 }
 
 pub fn clearGrid(self: *Screen) void {
@@ -153,14 +153,14 @@ pub fn writeCell(self: *Screen, col: u16, row: u16, content: []const u8, opts: W
         try self.str_pool.appendSlice(self.allocator, content);
     }
 
-    self.buf[row * self.winsize.cols + col] = .{
+    self.buf[@as(usize, row) * @as(usize, self.winsize.cols) + @as(usize, col)] = .{
         .content = cell_content,
         .style = opts.style,
         .block = opts.block,
     };
 
     const wide_cell_index = self.getCellIndex(col, row);
-    const wide_continuation_buf = self.buf[wide_cell_index.value() + 1 .. wide_cell_index.value() + width];
+    const wide_continuation_buf = self.buf[@as(usize, wide_cell_index.value()) + 1 .. @as(usize, wide_cell_index.value()) + @as(usize, width)];
     @memset(wide_continuation_buf, Cell{ .content = .wide_continuation });
 
     return width;
@@ -190,7 +190,7 @@ pub fn readCell(self: *const Screen, col: u16, row: u16) Cell {
 }
 
 pub inline fn getCellIndex(self: *const Screen, col: u16, row: u16) Cell.Index {
-    return Cell.Index.from(row * self.winsize.cols + col);
+    return Cell.Index.from(@as(Cell.Index.UnderlyingT, row) * @as(Cell.Index.UnderlyingT, self.winsize.cols) + @as(Cell.Index.UnderlyingT, col));
 }
 
 pub fn renderDirect(self: *const Screen, tty: *zttio.Tty) std.Io.Writer.Error!void {

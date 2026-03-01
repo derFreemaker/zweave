@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 
 const zttio = @import("zttio");
 const zweave = @import("zweave");
@@ -35,90 +36,19 @@ const Block = struct {
 };
 
 pub fn main() !u8 {
-    var gpa: std.heap.DebugAllocator(.{
-        .retain_metadata = true,
-        .never_unmap = true,
+    var gpa: std.heap.DebugAllocator(if (builtin.mode != .Debug) .{} else .{
+        // .retain_metadata = true,
+        // .never_unmap = true,
+        .stack_trace_frames = 20,
     }) = .init;
     defer if (gpa.deinit() == .leak) @panic("memory leaks");
     const allocator = gpa.allocator();
 
-    // var tty = try zttio.Tty.init(
-    //     allocator,
-    //     allocator,
-    //     .stdin(),
-    //     .stdout(),
-    //     .{},
-    // );
-    // defer tty.deinit();
-
-    // try tty.enableAndResetAlternativeScreen();
-    // defer tty.disableAlternativeScreen() catch {};
-    // try tty.hideCursor();
-    // try tty.flush();
-
-    // var screen = try zweave.Screen.init(
-    //     allocator,
-    //     tty.getWinsize(),
-    //     tty.caps.unicode_width_method,
-    // );
-    // defer screen.deinit();
-
-    // while (true) {
-    //     var event = tty.nextEvent();
-    //     defer event.deinit(allocator);
-
-    //     switch (event) {
-    //         .key_press => |key| {
-    //             if (key.matches('c', .{ .ctrl = true })) {
-    //                 break;
-    //             }
-    //         },
-    //         .winsize => |winsize| {
-    //             try screen.resize(winsize);
-    //             screen.clear();
-
-    //             const offset = try screen.write(0, 0, "width method: ", .{});
-    //             _ = try screen.write(offset, 0, @tagName(screen.width_method), .{});
-
-    //             const style_1 = try screen.registerStyle(.{
-    //                 .background = .rgb(34, 31, 48),
-    //                 .underline = .{ .style = .curly },
-    //             });
-
-    //             const link = try screen.registerBlock(.{
-    //                 .hyperlink = .{ .uri = "https://www.google.com" },
-    //             });
-
-    //             var last_row = screen.view(0, screen.winsize.rows - 1, null, null, .allow_overflow);
-    //             _ = try last_row.write(0, 0, "as", .{
-    //                 .style = style_1,
-    //                 .block = link,
-    //             });
-    //             _ = try last_row.write(0, 1, "test", .{});
-
-    //             const style_2 = try screen.registerStyle(.{
-    //                 .background = .rgb(34, 31, 48),
-    //             });
-
-    //             var last_row_2 = last_row.view(3, 0, null, null, .no_overflow);
-    //             _ = try last_row_2.write(0, 0, "👨‍👩‍👧‍👦", .{
-    //                 .style = style_2,
-    //             });
-
-    //             _ = try last_row.writeCell(4, 0, "t", .{
-    //                 .style = style_2,
-    //             });
-
-    //             try screen.renderDirect(tty);
-    //             try tty.flush();
-    //         },
-    //         else => {},
-    //     }
-    // }
-
-    var manager = try zweave.Manager.init(allocator);
+    var manager: zweave.Manager = undefined;
+    try zweave.Manager.init_(&manager, allocator);
     global_tty = manager.tty;
     defer {
+        manager.tty.flush() catch {};
         manager.deinit();
         global_tty = null;
     }
@@ -129,18 +59,15 @@ pub fn main() !u8 {
     try manager.tty.flush();
 
     var block = Block{
-        .width = 0.3,
-        .height = 0.2,
+        .width = 1,
+        .height = 1,
     };
     const block_handle = try manager.tree.create(block.element());
     try manager.tree.addChildren(manager.root, &.{block_handle});
 
-    try manager.renderNextFrame();
-
     while (true) {
-        try manager.renderNextFrame();
-
         if (manager.tty.reader.queue.isEmpty()) {
+            std.Thread.sleep(10 * std.time.ns_per_ms);
             continue;
         }
 
@@ -151,18 +78,33 @@ pub fn main() !u8 {
             .key_press => |key_press| {
                 if (key_press.matches('c', .{ .ctrl = true })) {
                     break;
+                } else if (key_press.matches(zttio.Key.f1, .{})) {
+                    manager.showStats = !manager.showStats;
                 } else if (key_press.matches(zttio.Key.left, .{})) {
-                    block.width -= 0.1;
+                    if (block.width != @as(f32, 0)) {
+                        block.width -= 0.1;
+                    }
                 } else if (key_press.matches(zttio.Key.right, .{})) {
-                    block.width += 0.1;
+                    if (block.width != @as(f32, 1)) {
+                        block.width += 0.1;
+                    }
                 } else if (key_press.matches(zttio.Key.up, .{})) {
-                    block.height -= 0.1;
+                    if (block.height != @as(f32, 0)) {
+                        block.height -= 0.1;
+                    }
                 } else if (key_press.matches(zttio.Key.down, .{})) {
-                    block.height += 0.1;
+                    if (block.height != @as(f32, 1)) {
+                        block.height += 0.1;
+                    }
                 }
+            },
+            .winsize => |winsize| {
+                try manager.renderer.resize(winsize);
             },
             else => {},
         }
+
+        try manager.renderNextFrame();
     }
 
     return 0;

@@ -5,7 +5,7 @@ const LayoutConstraints = @import("layout_constraints.zig");
 const Tree = @import("tree.zig");
 const Screen = @import("screen.zig");
 
-pub const HandleStore = Handles.HandleStoreT(Element, u32);
+pub const HandleStore = Handles.HandleStoreT(Element, u16);
 pub const Handle = HandleStore.Handle;
 
 const Element = @This();
@@ -22,8 +22,12 @@ pub const Interface = struct {
     vtable: *const VTable,
 };
 
+parent: Handle = .invalid,
 interface: Interface,
 children: std.ArrayList(Handle) = .empty,
+
+isDirty: bool = true,
+isChildDirty: bool = false,
 
 pub const GetLayoutConstraintsError = std.mem.Allocator.Error;
 

@@ -38,17 +38,18 @@ pub inline fn getScreen(self: *const Renderer) *Screen {
     return self.next;
 }
 
+pub fn resize(self: *Renderer, new_winsize: zttio.Winsize) std.mem.Allocator.Error!void {
+    try self.next.resize(new_winsize);
+    try self.prev.resize(new_winsize);
+}
+
 pub fn render(self: *Renderer, tty: *zttio.Tty) error{UnableToRender}!void {
+    tty.startSync() catch {};
+
     const next = self.next;
-
-    const now = std.time.nanoTimestamp();
-    const fps_str = std.fmt.allocPrint(next.allocator, "FPS {d}", .{@divFloor(60_000_000_000, now - self.last)}) catch return error.UnableToRender;
-    defer next.allocator.free(fps_str);
-    self.last = now;
-
-    _ = next.write(0, 0, fps_str, .{}) catch return error.UnableToRender;
-
     next.renderDirect(tty) catch return error.UnableToRender;
+
+    tty.endSync() catch {};
 
     self.next = self.prev;
     self.prev = next;

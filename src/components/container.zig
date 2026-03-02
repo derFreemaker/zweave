@@ -43,74 +43,71 @@ pub fn computeLayout(ctx: *const Element.CalcLayoutContext) Element.CalcLayoutEr
         });
     }
 
+    var max_row_height: u16 = 0;
+    var pos: Element.SmallVec2 = .{ .x = 0, .y = 0 };
     var budget = ctx.available;
-    var childs_data = try ctx.allocator.alloc(ChildData, childs.len);
-    defer ctx.allocator.free(childs_data);
     for (child_constraints, 0..) |child_constraint, i| {
-        const child_data: *ChildData = &childs_data[i];
+        const child_data = ctx.tree.getLayoutDataMut(childs[i]);
+        child_data.pos = pos;
 
-        switch (child_constraint.width) {
-            .fixed => |fixed| {
-                if (budget.x > fixed) {
-                    budget.x -= fixed;
-                } else {
-                    child_data.is_overflowing = true;
-                    budget.x = 0;
-                }
+        const width = switch (child_constraint.width) {
+            .fixed => |fixed| fixed,
+            .percentage => |perc| @as(u16, @intFromFloat(@as(f32, @floatFromInt(ctx.available.x)) * perc)),
+        };
 
-                child_data.size.x += fixed;
-            },
-            .percentage => |perc| {
-                const width: u16 = @intFromFloat(@as(f32, @floatFromInt(ctx.available.x)) * perc);
+        if (width > budget.x) {
+            pos.y = max_row_height;
+            child_data.pos.x = 0;
+            child_data.pos.y = max_row_height;
+            max_row_height = 0;
 
-                if (width > budget.x) {
-                    child_data.is_overflowing = true;
-                    budget.x = 0;
-                } else {
-                    budget.x -= width;
-                }
-            },
+            budget.x = ctx.available.x - width;
+            pos.x = width;
+        } else {
+            budget.x -= width;
+            pos.x += width;
         }
 
-        switch (child_constraint.height) {
-            .fixed => |fixed| {
-                if (budget.y > fixed) {
-                    budget.y -= fixed;
-                } else {
-                    child_data.is_overflowing = true;
-                    budget.y = 0;
-                }
+        child_data.size.x = width;
 
-                child_data.size.y += fixed;
-            },
-            .percentage => |perc| {
-                const height: u16 = @intFromFloat(@as(f32, @floatFromInt(ctx.available.y)) * perc);
+        const height = switch (child_constraint.height) {
+            .fixed => |fixed| fixed,
+            .percentage => |perc| @as(u16, @intFromFloat(@as(f32, @floatFromInt(ctx.available.y)) * perc)),
+        };
 
-                if (height > budget.y) {
-                    child_data.is_overflowing = true;
-                    budget.y = 0;
-                } else {
-                    budget.y -= height;
-                }
-            },
+        if (height > budget.y) {
+            budget.y = 0;
+        } else {
+            budget.y -= height;
         }
+
+        child_data.size.y = height;
+        max_row_height = @max(max_row_height, height);
     }
 
-    return .{ .x = ctx.available.x - budget.x, .y = ctx.available.y - budget.y };
+    return ctx.available;
 }
-
-const ChildData = struct {
-    // has_range: bool = false,
-    size: Element.SmallVec2 = .{ .x = 0, .y = 0 },
-    is_overflowing: bool = false,
-};
 
 pub fn draw(ctx: *const Element.DrawContext) Element.DrawError!void {
     const view = &ctx.view;
 
-    for (0..view.height) |h| {
-        for (0..view.width) |w| {
-            _ = try view.writeCell(@intCast(w), @intCast(h), "F", .{});
-        }
+    const childs = ctx.self.children.items;
+    for (childs) |child_handle| {
+        const child = ctx.tree.get(child_handle);
+        const child_layout_data = ctx.tree.getLayoutData(child_handle);
+
+        // std.debug.print("view: col: {d} row: {d} width: {d} height: {d}\n", .{ view.col, view.row, view.width, view.height });
+        // std.debug.print("{d}-layout: x: {d} y: {d} width: {d} height: {d}\n", .{ child_handle.index, child_layout_data.pos.x, child_layout_data.pos.y, child_layout_data.size.x, child_layout_data.size.y });
+        const child_view = view.view(child_layout_data.pos.x, child_layout_data.pos.y, child_layout_data.size.x, child_layout_data.size.y, .allow_overflow);
+        // std.debug.print("{d}-view: col: {d} row: {d} width: {d} height: {d}\n", .{ child_handle.index, child_view.col, child_view.row, child_view.width, child_view.height });
+
+        try child.interface.vtable.draw(&Element.DrawContext{
+            .tree = ctx.tree,
+
+            .self = child,
+            .self_handle = child_handle,
+
+            .view = child_view,
+        });
     }
 }

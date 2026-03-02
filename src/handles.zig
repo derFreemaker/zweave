@@ -77,7 +77,7 @@ pub fn HandleStoreT(comptime ParentT: type, comptime T: type) type {
             }
         }
 
-        pub fn remove(self: *Self, handle: Handle) void {
+        pub fn destroy(self: *Self, handle: Handle) void {
             if (!self.isValid(handle)) return;
 
             if (comptime buildingSafe) {
@@ -87,7 +87,7 @@ pub fn HandleStoreT(comptime ParentT: type, comptime T: type) type {
             self.free_handles.appendAssumeCapacity(handle.index);
         }
 
-        pub fn count(self: *const Self) usize {
+        pub fn maxUsed(self: *const Self) usize {
             return if (comptime buildingSafe) self.handles.items.len else self.handles;
         }
     };

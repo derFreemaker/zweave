@@ -7,6 +7,7 @@ const zweave = @import("zweave");
 const Block = struct {
     width: f32,
     height: f32,
+    content: []const u8,
 
     pub fn element(self: *Block) zweave.Element.Interface {
         return .{ .ptr = self, .vtable = &.{
@@ -25,20 +26,23 @@ const Block = struct {
     }
 
     pub fn draw(ctx: *const zweave.Element.DrawContext) zweave.Element.DrawError!void {
+        const self: *Block = @ptrCast(@alignCast(ctx.self.interface.ptr));
         const view = &ctx.view;
 
         for (0..view.height) |h| {
             for (0..view.width) |w| {
-                _ = try view.writeCell(@intCast(w), @intCast(h), "F", .{});
+                _ = try view.writeCell(@intCast(w), @intCast(h), self.content, .{});
             }
         }
+
+        _ = try view.write(0, 5, "hi Block here! ", .{});
     }
 };
 
 pub fn main() !u8 {
     var gpa: std.heap.DebugAllocator(if (builtin.mode != .Debug) .{} else .{
-        // .retain_metadata = true,
-        // .never_unmap = true,
+        .retain_metadata = true,
+        .never_unmap = true,
         .stack_trace_frames = 20,
     }) = .init;
     defer if (gpa.deinit() == .leak) @panic("memory leaks");
@@ -59,11 +63,27 @@ pub fn main() !u8 {
     try manager.tty.flush();
 
     var block = Block{
-        .width = 1,
-        .height = 1,
+        .width = 0.3,
+        .height = 0.2,
+        .content = "#",
     };
     const block_handle = try manager.tree.create(block.element());
-    try manager.tree.addChildren(manager.root, &.{block_handle});
+
+    var block2 = Block{
+        .width = 0.5,
+        .height = 0.67,
+        .content = "+",
+    };
+    const block2_handle = try manager.tree.create(block2.element());
+
+    var block3 = Block{
+        .width = 0.1,
+        .height = 0.05,
+        .content = "-",
+    };
+    const block3_handle = try manager.tree.create(block3.element());
+
+    try manager.tree.addChildren(manager.root, &.{ block_handle, block2_handle, block3_handle });
 
     while (true) {
         if (manager.tty.reader.queue.isEmpty()) {
@@ -81,26 +101,19 @@ pub fn main() !u8 {
                 } else if (key_press.matches(zttio.Key.f1, .{})) {
                     manager.showStats = !manager.showStats;
                 } else if (key_press.matches(zttio.Key.left, .{})) {
-                    if (block.width != @as(f32, 0)) {
-                        block.width -= 0.1;
-                    }
+                    block.width = std.math.clamp(block.width - 0.05, 0, 0.75);
                 } else if (key_press.matches(zttio.Key.right, .{})) {
-                    if (block.width != @as(f32, 1)) {
-                        block.width += 0.1;
-                    }
+                    block.width = std.math.clamp(block.width + 0.05, 0, 0.75);
                 } else if (key_press.matches(zttio.Key.up, .{})) {
-                    if (block.height != @as(f32, 0)) {
-                        block.height -= 0.1;
-                    }
+                    block.height = std.math.clamp(block.height - 0.05, 0, 0.6);
                 } else if (key_press.matches(zttio.Key.down, .{})) {
-                    if (block.height != @as(f32, 1)) {
-                        block.height += 0.1;
-                    }
+                    block.height = std.math.clamp(block.height + 0.05, 0, 0.6);
                 }
             },
             .winsize => |winsize| {
                 try manager.renderer.resize(winsize);
             },
+            .mouse, .mouse_leave => continue,
             else => {},
         }
 

@@ -24,10 +24,12 @@ pub const Interface = struct {
 
 parent: Handle = .invalid,
 interface: Interface,
+
+//TODO: move children into a map for faster modification
 children: std.ArrayList(Handle) = .empty,
 
 isDirty: bool = true,
-isChildDirty: bool = false,
+childIsDirty: bool = false,
 
 pub const GetLayoutConstraintsError = std.mem.Allocator.Error;
 
@@ -43,7 +45,7 @@ pub const CalcLayoutError = DrawError || std.mem.Allocator.Error;
 
 pub const CalcLayoutContext = struct {
     allocator: std.mem.Allocator,
-    tree: *const Tree,
+    tree: *Tree,
 
     self: *const Element,
     self_handle: Element.Handle,
@@ -55,6 +57,8 @@ pub const CalcLayoutContext = struct {
 pub const DrawError = std.mem.Allocator.Error;
 
 pub const DrawContext = struct {
+    tree: *const Tree,
+
     self: *const Element,
     self_handle: Element.Handle,
 

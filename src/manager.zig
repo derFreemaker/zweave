@@ -83,6 +83,8 @@ pub fn renderNextFrame(self: *Manager) RenderError!void {
     });
     const root_view = screen.view(0, 0, needed_space.x, needed_space.y, .allow_overflow);
     try root.interface.vtable.draw(&Element.DrawContext{
+        .tree = &self.tree,
+
         .self = root,
         .self_handle = self.root,
 

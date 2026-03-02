@@ -354,9 +354,14 @@ pub const View = struct {
         if (self.overflow == .no_overflow) {
             std.debug.assert(col + w <= self.width);
             std.debug.assert(row + h <= self.height);
-        } else if (col + w >= self.width or row + h >= self.height) {
-            w = self.width - @min(self.width, col);
-            h = self.height - @min(self.height, row);
+        } else {
+            if (col + w > self.width) {
+                w = self.width - @min(self.width, col);
+            }
+
+            if (row + h > self.height) {
+                h = self.height - @min(self.height, row);
+            }
         }
 
         return View{

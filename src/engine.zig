@@ -3,11 +3,13 @@ const zttio = @import("zttio");
 
 const CountingAllocator = @import("counting_allocator.zig");
 const Tree = @import("tree.zig");
+const ScreenStore = @import("screen/screen_store.zig");
 const Element = @import("element.zig");
 const Renderer = @import("renderer.zig");
 const Container = @import("components/container.zig");
+const Style = @import("styling.zig").Style;
 
-const Manager = @This();
+const Engine = @This();
 
 allocator: std.mem.Allocator,
 tree_allocator: CountingAllocator,
@@ -16,16 +18,18 @@ arena: std.heap.ArenaAllocator,
 
 tty: *zttio.Tty,
 tree: Tree,
+screen_store: ScreenStore,
 renderer: Renderer,
 
 root_container: Container,
 root: Element.Handle,
 
-showStats: bool = false,
+show_stats: bool = false,
+stats_style: ScreenStore.StyleHandle,
 
 pub const InitError = error{UnableToInitTty} || std.mem.Allocator.Error;
 
-pub fn init_(self: *Manager, allocator: std.mem.Allocator) InitError!void {
+pub fn init_(self: *Engine, allocator: std.mem.Allocator) InitError!void {
     self.tree_allocator = CountingAllocator.init(allocator);
     self.render_allocator = CountingAllocator.init(allocator);
     self.arena = std.heap.ArenaAllocator.init(allocator);
@@ -37,31 +41,46 @@ pub fn init_(self: *Manager, allocator: std.mem.Allocator) InitError!void {
         .stdout(),
         .{},
     ) catch return error.UnableToInitTty;
-    errdefer self.deinit();
+    errdefer self.tty.deinit();
 
     self.tree = try Tree.init(self.tree_allocator.allocator());
-    errdefer self.deinit();
+    errdefer self.tree.deinit();
+
+    self.screen_store = try ScreenStore.init(self.render_allocator.allocator());
+    errdefer self.screen_store.deinit();
 
     self.renderer = try Renderer.init(self.render_allocator.allocator(), self.tty.getWinsize(), self.tty.caps.unicode_width_method);
     errdefer self.renderer.deinit(allocator);
 
     self.root_container = Container.init();
     self.root = try self.tree.create(self.root_container.element());
+    errdefer self.tree.destroy(self.root);
+
+    self.stats_style = try self.screen_store.addStyle(Style{
+        .background = .{ .c8 = .black },
+        .foreground = .{ .c8 = .green },
+    });
+    errdefer self.screen_store.removeStyle(self.stats_style);
 }
 
-pub fn deinit(self: *Manager) void {
+pub fn deinit(self: *Engine) void {
     self.arena.deinit();
 
-    self.tree.deinit();
     self.renderer.deinit(self.render_allocator.allocator());
+    self.screen_store.deinit();
+    self.tree.deinit();
     self.tty.deinit();
+}
+
+pub inline fn resize(self: *Engine, new_winsize: zttio.Winsize) std.mem.Allocator.Error!void {
+    return self.renderer.resize(self.render_allocator.allocator(), new_winsize);
 }
 
 pub const RenderError = error{
     UnableToRender,
 } || std.mem.Allocator.Error;
 
-pub fn renderNextFrame(self: *Manager) RenderError!void {
+pub fn renderNextFrame(self: *Engine) RenderError!void {
     _ = self.arena.reset(.{ .retain_with_limit = 8 * 1024 * 1024 });
     const allocator = self.arena.allocator();
 
@@ -81,7 +100,13 @@ pub fn renderNextFrame(self: *Manager) RenderError!void {
             .y = screen.winsize.rows,
         },
     });
-    const root_view = screen.view(0, 0, needed_space.x, needed_space.y, .allow_overflow);
+    const root_view = screen.view(.{
+        .col = 0,
+        .row = 0,
+        .width = needed_space.x,
+        .height = needed_space.y,
+    });
+
     try root.interface.vtable.draw(&Element.DrawContext{
         .tree = &self.tree,
 
@@ -91,13 +116,18 @@ pub fn renderNextFrame(self: *Manager) RenderError!void {
         .view = root_view,
     });
 
-    const stats_view = screen.view(0, 0, null, null, .allow_overflow);
+    const stats_view = screen.view(.{
+        .col = 0,
+        .row = 0,
 
-    if (self.showStats) {
+        .default_style = self.stats_style,
+    });
+
+    if (self.show_stats) {
         const winsize_str = try std.fmt.allocPrint(allocator, "Winsize: c-{d}x{d}-{d} p-{d}x{d} ", .{
             screen.winsize.cols,
             screen.winsize.rows,
-            screen.capacity,
+            screen.buf.len,
             screen.winsize.x_pixel,
             screen.winsize.y_pixel,
         });
@@ -127,7 +157,7 @@ pub fn renderNextFrame(self: *Manager) RenderError!void {
         _ = try stats_view.write(0, 2, mem_str, .{});
     }
 
-    try self.renderer.render(self.tty);
+    try self.renderer.render(&self.screen_store, self.tty);
 
     self.tty.flush() catch return error.UnableToRender;
 }

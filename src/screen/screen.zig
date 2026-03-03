@@ -1,23 +1,15 @@
 const std = @import("std");
 const zttio = @import("zttio");
 
-const Unicode = @import("unicode.zig");
-const Styling = @import("styling.zig");
-const Cell = @import("cell.zig");
+const Cell = @import("../cell.zig");
 const Segment = Cell.Segment;
+const Style = @import("../styling.zig").Style;
+const Unicode = @import("../unicode.zig");
+const ScreenStore = @import("screen_store.zig");
 
 const Screen = @This();
 
-//TODO: move allocator outside when not needed anymore
-allocator: std.mem.Allocator,
 buf: []Cell,
-capacity: usize,
-
-//TODO: move str_pool, styles and segments outside of screen to renderer or something,
-// to make it easier to compare cells
-str_pool: std.ArrayList(u8),
-styles: std.ArrayList(Styling.Style),
-segments: std.ArrayList(Segment),
 
 winsize: zttio.Winsize,
 width_method: zttio.gwidth.Method = .wcwidth,
@@ -32,38 +24,20 @@ pub fn init(allocator: std.mem.Allocator, winsize: zttio.Winsize, width_method: 
     errdefer allocator.free(buf);
     @memset(buf, Cell{});
 
-    var str_pool = try std.ArrayList(u8).initCapacity(allocator, 2 * 1024);
-    errdefer str_pool.deinit(allocator);
-
-    var styles = try std.ArrayList(Styling.Style).initCapacity(allocator, 32);
-    errdefer styles.deinit(allocator);
-
-    var segments = try std.ArrayList(Segment).initCapacity(allocator, 64);
-    errdefer segments.deinit(allocator);
-
     return Screen{
-        .allocator = allocator,
         .buf = buf,
-        .capacity = @intCast(buf.len),
-
-        .str_pool = str_pool,
-        .styles = styles,
-        .segments = segments,
 
         .winsize = winsize,
         .width_method = width_method,
     };
 }
 
-pub fn deinit(self: *Screen) void {
-    self.allocator.free(self.buf.ptr[0..self.capacity]);
-    self.str_pool.deinit(self.allocator);
-    self.styles.deinit(self.allocator);
-    self.segments.deinit(self.allocator);
+pub fn deinit(self: *Screen, allocator: std.mem.Allocator) void {
+    allocator.free(self.buf);
 }
 
 /// this doesn't clear any data leaving the buffer in an undefined state
-pub fn resize(self: *Screen, new_winsize: zttio.Winsize) std.mem.Allocator.Error!void {
+pub fn resize(self: *Screen, allocator: std.mem.Allocator, new_winsize: zttio.Winsize) std.mem.Allocator.Error!void {
     if (std.mem.eql(u8, std.mem.asBytes(&self.winsize), std.mem.asBytes(&new_winsize))) {
         return;
     }
@@ -71,60 +45,24 @@ pub fn resize(self: *Screen, new_winsize: zttio.Winsize) std.mem.Allocator.Error
     self.winsize = new_winsize;
 
     const new_capacity: usize = @as(usize, new_winsize.cols) * @as(usize, new_winsize.rows);
-    if (new_capacity <= self.capacity) {
-        self.buf.len = new_capacity;
+    if (new_capacity <= self.buf.len) {
         return;
     }
 
-    const old_memory = self.buf.ptr[0..self.capacity];
-    if (self.allocator.resize(old_memory, new_capacity)) {
+    if (allocator.resize(self.buf, new_capacity)) {
         self.buf.len = new_capacity;
     } else {
-        self.allocator.free(old_memory);
-        self.buf = try self.allocator.alloc(Cell, new_capacity);
+        allocator.free(self.buf);
+        self.buf = try allocator.alloc(Cell, new_capacity);
     }
-    self.capacity = new_capacity;
-}
-
-pub fn clearGrid(self: *Screen) void {
-    @memset(self.buf, Cell{});
 }
 
 pub fn clear(self: *Screen) void {
-    self.clearGrid();
-    self.str_pool.clearRetainingCapacity();
-    self.styles.clearRetainingCapacity();
-    self.segments.clearRetainingCapacity();
+    @memset(self.buf, Cell{});
 }
 
 pub fn strWidth(self: *const Screen, str: []const u8) usize {
     return zttio.gwidth.gwidth(str, self.width_method);
-}
-
-pub fn registerStyle(self: *Screen, style: Styling.Style) std.mem.Allocator.Error!Styling.Index {
-    // we could deduplicate here if necessary
-
-    const index = Styling.Index.from(@intCast(self.styles.items.len));
-    try self.styles.append(self.allocator, style);
-    return index;
-}
-
-pub fn getStyle(self: *const Screen, index: Styling.Index) ?Styling.Style {
-    if (self.styles.items.len <= index.value()) return null;
-    return self.styles.items[index.value()];
-}
-
-pub fn registerBlock(self: *Screen, block: Segment) std.mem.Allocator.Error!Segment.Index {
-    // we could deduplicate here if necessary
-
-    const index = Segment.Index.from(@intCast(self.segments.items.len));
-    try self.segments.append(self.allocator, block);
-    return index;
-}
-
-pub fn getBlock(self: *const Screen, index: Segment.Index) ?Segment {
-    if (self.segments.items.len <= index.value()) return null;
-    return self.segments.items[index.value()];
 }
 
 /// zero-based indexing
@@ -139,24 +77,25 @@ pub fn writeCell(self: *Screen, col: u16, row: u16, content: []const u8, opts: W
         cell_content = .wide_continuation;
     } else if (content.len == 1) {
         cell_content = .{ .char = content[0] };
-    } else if (content.len < 12) {
+    } else if (content.len <= Cell.shortStringMaxLength) {
         cell_content = .{ .short = undefined };
         @memcpy(cell_content.short[0..content.len], content);
-        if (content.len != 11) {
+        if (content.len != Cell.shortStringMaxLength) {
             cell_content.short[content.len] = 0;
         }
-    } else {
-        cell_content = .{ .long = .{
-            .start = @intCast(self.str_pool.items.len),
-            .end = @intCast(self.str_pool.items.len + content.len),
-        } };
-        try self.str_pool.appendSlice(self.allocator, content);
     }
+    // else {
+    //     cell_content = .{ .long = .{
+    //         .start = @intCast(self.str_pool.items.len),
+    //         .end = @intCast(self.str_pool.items.len + content.len),
+    //     } };
+    //     try self.str_pool.appendSlice(self.allocator, content);
+    // }
 
     self.buf[@as(usize, row) * @as(usize, self.winsize.cols) + @as(usize, col)] = .{
         .content = cell_content,
         .style = opts.style,
-        .block = opts.block,
+        .block = opts.segment,
     };
 
     const wide_cell_index = self.getCellIndex(col, row);
@@ -177,7 +116,7 @@ pub fn write(self: *Screen, col: u16, row: u16, content: []const u8, opts: Write
     while (grapheme_iter.next()) |grapheme| {
         cur_col += try self.writeCell(cur_col, cur_row, grapheme.bytes(content), .{
             .style = opts.style,
-            .block = opts.block,
+            .segment = opts.segment,
         });
     }
 
@@ -193,16 +132,18 @@ pub inline fn getCellIndex(self: *const Screen, col: u16, row: u16) Cell.Index {
     return Cell.Index.from(@as(Cell.Index.UnderlyingT, row) * @as(Cell.Index.UnderlyingT, self.winsize.cols) + @as(Cell.Index.UnderlyingT, col));
 }
 
-pub fn renderDirect(self: *const Screen, tty: *zttio.Tty) std.Io.Writer.Error!void {
+pub fn renderDirect(self: *const Screen, store: *const ScreenStore, tty: *zttio.Tty) std.Io.Writer.Error!void {
     try tty.clearScreen(.entire);
     try tty.moveCursor(.home);
 
+    const end_of_buffer = @as(usize, self.winsize.cols) * @as(usize, self.winsize.rows);
+
     var next_wrap: usize = self.winsize.cols;
-    var current_style_index: Styling.Index = .invalid;
-    var current_block_index: Segment.Index = .invalid;
-    var current_block: Segment = undefined;
+    var current_style_handle: ScreenStore.StyleHandle = .invalid;
+    var current_segment_handle: ScreenStore.SegmentHandle = .invalid;
+    var current_segment: *const Segment = undefined;
     var i: usize = 0;
-    while (i < self.buf.len) : (i += 1) {
+    while (i < end_of_buffer) : (i += 1) {
         const cell = self.buf[i];
         if (i >= next_wrap) {
             try tty.stdout.writeByte('\n');
@@ -210,29 +151,29 @@ pub fn renderDirect(self: *const Screen, tty: *zttio.Tty) std.Io.Writer.Error!vo
         }
         if (cell.content == .wide_continuation) continue;
 
-        if (cell.style != current_style_index) {
-            if (cell.style == .invalid) {
-                try tty.setStyling(.{});
+        if (!cell.style.eql(current_style_handle)) {
+            if (cell.style.isInvalid()) {
+                try tty.setStyling(&Style{});
             } else {
-                const style = self.getStyle(cell.style).?;
+                const style = store.getStyle(cell.style);
                 try tty.setStyling(style);
             }
 
-            current_style_index = cell.style;
+            current_style_handle = cell.style;
         }
 
-        if (cell.block != current_block_index) {
-            if (current_block_index != .invalid) {
-                try current_block.end(tty.stdout);
+        if (!cell.block.eql(current_segment_handle)) {
+            if (!current_segment_handle.isInvalid()) {
+                try current_segment.end(tty.stdout);
             }
 
-            if (cell.block != .invalid) {
-                const block = self.getBlock(cell.block).?;
-                try block.begin(tty.stdout);
-                current_block = block;
+            if (!cell.block.isInvalid()) {
+                const segment = store.getSegment(cell.block);
+                try segment.begin(tty.stdout);
+                current_segment = segment;
             }
 
-            current_block_index = cell.block;
+            current_segment_handle = cell.block;
         }
 
         switch (cell.content) {
@@ -244,59 +185,62 @@ pub fn renderDirect(self: *const Screen, tty: *zttio.Tty) std.Io.Writer.Error!vo
                 try tty.stdout.writeAll(s[0..end]);
                 i += end - 1;
             },
-            .long => |index| {
-                const str = index.get(self.str_pool.items);
-                try tty.stdout.writeAll(str);
-                i += str.len - 1;
-            },
+            // .long => |index| {
+            //     const str = index.get(self.str_pool.items);
+            //     try tty.stdout.writeAll(str);
+            //     i += str.len - 1;
+            // },
             .wide_continuation => unreachable,
         }
     }
 }
 
-pub fn view(self: *Screen, col: u16, row: u16, width: ?u16, height: ?u16, overflow: Overflow) View {
-    const w = width orelse self.winsize.cols - col;
-    const h = height orelse self.winsize.rows - row;
-    std.debug.assert(col + w <= self.winsize.cols);
-    std.debug.assert(row + h <= self.winsize.rows);
+pub fn view(self: *Screen, opts: View.Options) View {
+    std.debug.assert(opts.col <= self.winsize.cols);
+    std.debug.assert(opts.row <= self.winsize.rows);
+
+    const w = opts.width orelse self.winsize.cols - opts.col;
+    const h = opts.height orelse self.winsize.rows - opts.row;
+
+    std.debug.assert(opts.col + w <= self.winsize.cols);
+    std.debug.assert(opts.row + h <= self.winsize.rows);
 
     return View{
         .screen = self,
-        .col = col,
-        .row = row,
+
+        .col = opts.col,
+        .row = opts.row,
         .width = w,
         .height = h,
-        .overflow = overflow,
+
+        .default_style = opts.default_style,
+        .overflow = opts.overflow,
     };
 }
 
 pub const View = struct {
+    pub const Options = struct {
+        col: u16,
+        row: u16,
+        width: ?u16 = null,
+        height: ?u16 = null,
+
+        default_style: ScreenStore.StyleHandle = .invalid,
+        overflow: Overflow = .allow_overflow,
+    };
+
     screen: *Screen,
 
     col: u16,
     row: u16,
     width: u16,
     height: u16,
+
+    default_style: ScreenStore.StyleHandle,
     overflow: Overflow,
 
     pub inline fn strWidth(self: *const View, str: []const u8) usize {
         return self.screen.strWidth(str);
-    }
-
-    pub inline fn registerStyle(self: *const View, style: Styling.Style) std.mem.Allocator.Error!Styling.Index {
-        return self.screen.registerStyle(style);
-    }
-
-    pub inline fn getStyle(self: *const View, index: Styling.Index) ?Styling.Style {
-        return self.screen.getStyle(index);
-    }
-
-    pub inline fn registerBlock(self: *const View, block: Segment) std.mem.Allocator.Error!Segment.Index {
-        return self.screen.registerBlock(block);
-    }
-
-    pub inline fn getBlock(self: *const View, index: Segment.Index) ?Segment {
-        return self.screen.getBlock(index);
     }
 
     /// zero-based indexing
@@ -310,7 +254,16 @@ pub const View = struct {
             return 0;
         }
 
-        return self.screen.writeCell(self.col + col, self.row + row, content, opts);
+        return self.screen.writeCell(self.col + col, self.row + row, content, blk: {
+            if (opts.style.isInvalid()) {
+                break :blk WriteOptions{
+                    .style = self.default_style,
+                    .segment = opts.segment,
+                };
+            }
+
+            break :blk opts;
+        });
     }
 
     /// zero-based indexing
@@ -324,7 +277,16 @@ pub const View = struct {
             return 0;
         }
 
-        return self.screen.write(self.col + col, self.row + row, content, opts);
+        return self.screen.write(self.col + col, self.row + row, content, blk: {
+            if (opts.style.isInvalid()) {
+                break :blk WriteOptions{
+                    .style = self.default_style,
+                    .segment = opts.segment,
+                };
+            }
+
+            break :blk opts;
+        });
     }
 
     /// zero-based indexing
@@ -348,29 +310,32 @@ pub const View = struct {
     }
 
     /// asserts that you are slicing inside the view if `.no_overflow`
-    pub fn view(self: *const View, col: u16, row: u16, width: ?u16, height: ?u16, overflow: Overflow) View {
-        var w = width orelse self.width - col;
-        var h = height orelse self.height - row;
+    pub fn view(self: *const View, opts: Options) View {
+        var w = opts.width orelse self.width - opts.col;
+        var h = opts.height orelse self.height - opts.row;
         if (self.overflow == .no_overflow) {
-            std.debug.assert(col + w <= self.width);
-            std.debug.assert(row + h <= self.height);
+            std.debug.assert(opts.col + w <= self.width);
+            std.debug.assert(opts.row + h <= self.height);
         } else {
-            if (col + w > self.width) {
-                w = self.width - @min(self.width, col);
+            if (opts.col + w > self.width) {
+                w = self.width - @min(self.width, opts.col);
             }
 
-            if (row + h > self.height) {
-                h = self.height - @min(self.height, row);
+            if (opts.row + h > self.height) {
+                h = self.height - @min(self.height, opts.row);
             }
         }
 
         return View{
             .screen = self.screen,
-            .col = self.col + col,
-            .row = self.row + row,
+
+            .col = self.col + opts.col,
+            .row = self.row + opts.row,
             .width = w,
             .height = h,
-            .overflow = overflow,
+
+            .default_style = opts.default_style,
+            .overflow = opts.overflow,
         };
     }
 };
@@ -381,6 +346,6 @@ pub const Overflow = enum(u1) {
 };
 
 pub const WriteOptions = struct {
-    style: Styling.Index = .invalid,
-    block: Segment.Index = .invalid,
+    style: ScreenStore.StyleHandle = .invalid,
+    segment: ScreenStore.SegmentHandle = .invalid,
 };

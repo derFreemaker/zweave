@@ -1,7 +1,8 @@
 const std = @import("std");
 const zttio = @import("zttio");
 
-const Screen = @import("screen.zig");
+const Screen = @import("screen/screen.zig");
+const ScreenStore = @import("screen/screen_store.zig");
 const Tree = @import("tree.zig");
 
 const Renderer = @This();
@@ -9,16 +10,14 @@ const Renderer = @This();
 prev: *Screen,
 next: *Screen,
 
-last: i128 = 0,
-
 pub fn init(allocator: std.mem.Allocator, winsize: zttio.Winsize, unicode_width_method: zttio.gwidth.Method) std.mem.Allocator.Error!Renderer {
     var first_screen = try allocator.create(Screen);
     first_screen.* = try Screen.init(allocator, winsize, unicode_width_method);
-    errdefer first_screen.deinit();
+    errdefer first_screen.deinit(allocator);
 
     var second_screen = try allocator.create(Screen);
     second_screen.* = try Screen.init(allocator, winsize, unicode_width_method);
-    errdefer second_screen.deinit();
+    errdefer second_screen.deinit(allocator);
 
     return Renderer{
         .prev = first_screen,
@@ -27,10 +26,10 @@ pub fn init(allocator: std.mem.Allocator, winsize: zttio.Winsize, unicode_width_
 }
 
 pub fn deinit(self: *Renderer, allocator: std.mem.Allocator) void {
-    self.prev.deinit();
+    self.prev.deinit(allocator);
     allocator.destroy(self.prev);
 
-    self.next.deinit();
+    self.next.deinit(allocator);
     allocator.destroy(self.next);
 }
 
@@ -38,16 +37,16 @@ pub inline fn getScreen(self: *const Renderer) *Screen {
     return self.next;
 }
 
-pub fn resize(self: *Renderer, new_winsize: zttio.Winsize) std.mem.Allocator.Error!void {
-    try self.next.resize(new_winsize);
-    try self.prev.resize(new_winsize);
+pub fn resize(self: *Renderer, allocator: std.mem.Allocator, new_winsize: zttio.Winsize) std.mem.Allocator.Error!void {
+    try self.next.resize(allocator, new_winsize);
+    try self.prev.resize(allocator, new_winsize);
 }
 
-pub fn render(self: *Renderer, tty: *zttio.Tty) error{UnableToRender}!void {
+pub fn render(self: *Renderer, screen_store: *const ScreenStore, tty: *zttio.Tty) error{UnableToRender}!void {
     tty.startSync() catch {};
 
     const next = self.next;
-    next.renderDirect(tty) catch return error.UnableToRender;
+    next.renderDirect(screen_store, tty) catch return error.UnableToRender;
 
     tty.endSync() catch {};
 

@@ -98,7 +98,12 @@ pub fn draw(ctx: *const Element.DrawContext) Element.DrawError!void {
 
         // std.debug.print("view: col: {d} row: {d} width: {d} height: {d}\n", .{ view.col, view.row, view.width, view.height });
         // std.debug.print("{d}-layout: x: {d} y: {d} width: {d} height: {d}\n", .{ child_handle.index, child_layout_data.pos.x, child_layout_data.pos.y, child_layout_data.size.x, child_layout_data.size.y });
-        const child_view = view.view(child_layout_data.pos.x, child_layout_data.pos.y, child_layout_data.size.x, child_layout_data.size.y, .allow_overflow);
+        const child_view = view.view(.{
+            .col = child_layout_data.pos.x,
+            .row = child_layout_data.pos.y,
+            .width = child_layout_data.size.x,
+            .height = child_layout_data.size.y,
+        });
         // std.debug.print("{d}-view: col: {d} row: {d} width: {d} height: {d}\n", .{ child_handle.index, child_view.col, child_view.row, child_view.width, child_view.height });
 
         try child.interface.vtable.draw(&Element.DrawContext{

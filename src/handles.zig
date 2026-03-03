@@ -1,11 +1,18 @@
 const std = @import("std");
 const builtin = @import("builtin");
 
-const buildingSafe = builtin.mode == .Debug or builtin.mode == .ReleaseSafe;
+pub fn HandleStoreT(comptime ParentT: type, comptime T: type, comptime safety: HandleSafety) type {
+    if (@typeInfo(T) != .int) @compileError("expected T of type 'int' found: " ++ @typeName(T));
+    if (@typeInfo(T).int.bits < 2) @compileError("expected T to have more than 1 or less bits: " ++ @typeName(T));
 
-pub fn HandleStoreT(comptime ParentT: type, comptime T: type) type {
+    const buildingSafe = switch (safety) {
+        .buildSafety => builtin.mode == .Debug or builtin.mode == .ReleaseSafe,
+        .safe => true,
+        .unsafe => false,
+    };
+
     return struct {
-        pub const Handle = HandleT(ParentT, T);
+        pub const Handle = HandleT(ParentT, T, safety);
 
         const Self = @This();
 
@@ -56,6 +63,11 @@ pub fn HandleStoreT(comptime ParentT: type, comptime T: type) type {
                 };
             }
 
+            std.debug.assert(if (comptime buildingSafe)
+                self.handles.items.len < Handle.invalid.index
+            else
+                self.handles < Handle.invalid.index);
+
             if (comptime buildingSafe) {
                 const gen = try self.handles.addOne(allocator);
                 try self.free_handles.ensureTotalCapacityPrecise(allocator, self.handles.capacity);
@@ -93,18 +105,44 @@ pub fn HandleStoreT(comptime ParentT: type, comptime T: type) type {
     };
 }
 
-pub fn HandleT(comptime ParentT: type, comptime T: type) type {
+pub fn HandleT(comptime ParentT: type, comptime T: type, comptime safety: HandleSafety) type {
     // we only need the parent type for uniques
     _ = ParentT;
 
     if (@typeInfo(T) != .int) @compileError("expected T of type 'int' found: " ++ @typeName(T));
+    if (@typeInfo(T).int.bits <= 1) @compileError("expected T to have more than 1 bit: " ++ @typeName(T));
+
+    const buildingSafe = switch (safety) {
+        .buildSafety => builtin.mode == .Debug or builtin.mode == .ReleaseSafe,
+        .safe => true,
+        .unsafe => false,
+    };
 
     return struct {
         const Self = @This();
 
         pub const invalid = Self{ .index = std.math.maxInt(T), .generation = if (buildingSafe) 0 else void{} };
 
+        pub inline fn isInvalid(self: Self) bool {
+            return self.eql(.invalid);
+        }
+
         index: T,
         generation: if (buildingSafe) T else void,
+
+        pub inline fn eql(self: Self, other: Self) bool {
+            if (comptime buildingSafe) {
+                return self.index == other.index and
+                    self.generation == other.generation;
+            } else {
+                return self.index == other.index;
+            }
+        }
     };
 }
+
+pub const HandleSafety = enum {
+    buildSafety,
+    safe,
+    unsafe,
+};

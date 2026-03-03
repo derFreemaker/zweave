@@ -3,9 +3,9 @@ const std = @import("std");
 const Handles = @import("handles.zig");
 const LayoutConstraints = @import("layout_constraints.zig");
 const Tree = @import("tree.zig");
-const Screen = @import("screen.zig");
+const Screen = @import("screen/screen.zig");
 
-pub const HandleStore = Handles.HandleStoreT(Element, u16);
+pub const HandleStore = Handles.HandleStoreT(Element, u16, .buildSafety);
 pub const Handle = HandleStore.Handle;
 
 const Element = @This();

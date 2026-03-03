@@ -1,6 +1,8 @@
 const std = @import("std");
 const zttio = @import("zttio");
 
+const ScreenStore = @import("screen/screen_store.zig");
+
 const IndexT = @import("index.zig").IndexT;
 const Styling = @import("styling.zig");
 
@@ -9,11 +11,11 @@ const Cell = @This();
 pub const Index = IndexT(Cell, u32);
 
 content: Content = .{ .char = ' ' },
-style: Styling.Index = .invalid,
-block: Segment.Index = .invalid,
+style: ScreenStore.StyleHandle = .invalid,
+block: ScreenStore.SegmentHandle = .invalid,
 
 comptime {
-    std.debug.assert(@sizeOf(Cell) == 16);
+    std.debug.assert(@sizeOf(Cell) == 8);
 }
 
 pub fn eql(self: Cell, other: Cell, self_str_pool: []const u8, other_str_pool: []const u8) bool {
@@ -38,27 +40,17 @@ pub fn eql(self: Cell, other: Cell, self_str_pool: []const u8, other_str_pool: [
     }
 }
 
-// we can use up to 11 bytes for data with tag thats 12 bytes
-// since we use at least 8 bytes for data and get padded up to 12 bytes anyway
+pub const shortStringMaxLength = 3;
+
 pub const Content = union(enum) {
     char: u8,
     /// null terminated if not fully used
-    short: [11]u8,
-    long: struct {
-        start: u32,
-        end: u32,
-
-        pub inline fn get(self: @This(), buf: []const u8) []const u8 {
-            std.debug.assert(buf.len >= self.end);
-            return buf[self.start..self.end];
-        }
-    },
+    short: [shortStringMaxLength]u8,
+    // long: ScreenStore.StrHandle,
     wide_continuation,
 };
 
 pub const Segment = struct {
-    pub const Index = IndexT(Segment, u16);
-
     hyperlink: ?zttio.ctlseqs.Hyperlink = null,
 
     pub fn begin(self: *const Segment, writer: *std.Io.Writer) std.Io.Writer.Error!void {

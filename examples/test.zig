@@ -8,6 +8,7 @@ const Block = struct {
     width: f32,
     height: f32,
     content: []const u8,
+    style: zweave.SegmentHandle = .invalid,
 
     pub fn element(self: *Block) zweave.Element.Interface {
         return .{ .ptr = self, .vtable = &.{
@@ -31,11 +32,15 @@ const Block = struct {
 
         for (0..view.height) |h| {
             for (0..view.width) |w| {
-                _ = try view.writeCell(@intCast(w), @intCast(h), self.content, .{});
+                _ = try view.writeCell(@intCast(w), @intCast(h), self.content, .{
+                    .style = self.style,
+                });
             }
         }
 
-        _ = try view.write(0, 5, "hi Block here! ", .{});
+        _ = try view.write(0, 5, "hi Block here! ", .{
+            .style = self.style,
+        });
     }
 };
 
@@ -48,50 +53,64 @@ pub fn main() !u8 {
     defer if (gpa.deinit() == .leak) @panic("memory leaks");
     const allocator = gpa.allocator();
 
-    var manager: zweave.Manager = undefined;
-    try zweave.Manager.init_(&manager, allocator);
-    global_tty = manager.tty;
+    var engine: zweave.Engine = undefined;
+    try zweave.Engine.init_(&engine, allocator);
+    global_tty = engine.tty;
     defer {
-        manager.tty.flush() catch {};
-        manager.deinit();
+        engine.tty.flush() catch {};
+        engine.deinit();
         global_tty = null;
     }
 
-    try manager.tty.enableAndResetAlternativeScreen();
-    defer manager.tty.disableAlternativeScreen() catch {};
-    try manager.tty.hideCursor();
-    try manager.tty.flush();
+    try engine.tty.enableAndResetAlternativeScreen();
+    defer engine.tty.disableAlternativeScreen() catch {};
+    try engine.tty.hideCursor();
+    try engine.tty.flush();
 
-    var block = Block{
+    const style1_handle = try engine.screen_store.addStyle(zweave.Style{
+        .background = .{ .c8 = .blue },
+        .underline = .{ .style = .dotted },
+    });
+    defer engine.screen_store.removeStyle(style1_handle);
+
+    var block1 = Block{
         .width = 0.3,
         .height = 0.2,
         .content = "#",
+        .style = style1_handle,
     };
-    const block_handle = try manager.tree.create(block.element());
+    const block1_handle = try engine.tree.create(block1.element());
+
+    const style2_handle = try engine.screen_store.addStyle(zweave.Style{
+        .background = .{ .c8 = .bright_red },
+        .attrs = .{ .blink = true, .reverse = true },
+    });
+    defer engine.screen_store.removeStyle(style2_handle);
 
     var block2 = Block{
         .width = 0.5,
         .height = 0.67,
         .content = "+",
+        .style = style2_handle,
     };
-    const block2_handle = try manager.tree.create(block2.element());
+    const block2_handle = try engine.tree.create(block2.element());
 
     var block3 = Block{
         .width = 0.1,
         .height = 0.05,
         .content = "-",
     };
-    const block3_handle = try manager.tree.create(block3.element());
+    const block3_handle = try engine.tree.create(block3.element());
 
-    try manager.tree.addChildren(manager.root, &.{ block_handle, block2_handle, block3_handle });
+    try engine.tree.addChildren(engine.root, &.{ block1_handle, block2_handle, block3_handle });
 
     while (true) {
-        if (manager.tty.reader.queue.isEmpty()) {
+        if (engine.tty.reader.queue.isEmpty()) {
             std.Thread.sleep(10 * std.time.ns_per_ms);
             continue;
         }
 
-        var event = manager.tty.nextEvent();
+        var event = engine.tty.nextEvent();
         defer event.deinit(allocator);
 
         switch (event) {
@@ -99,25 +118,25 @@ pub fn main() !u8 {
                 if (key_press.matches('c', .{ .ctrl = true })) {
                     break;
                 } else if (key_press.matches(zttio.Key.f1, .{})) {
-                    manager.showStats = !manager.showStats;
+                    engine.show_stats = !engine.show_stats;
                 } else if (key_press.matches(zttio.Key.left, .{})) {
-                    block.width = std.math.clamp(block.width - 0.05, 0, 0.75);
+                    block1.width = std.math.clamp(block1.width - 0.05, 0, 0.75);
                 } else if (key_press.matches(zttio.Key.right, .{})) {
-                    block.width = std.math.clamp(block.width + 0.05, 0, 0.75);
+                    block1.width = std.math.clamp(block1.width + 0.05, 0, 0.75);
                 } else if (key_press.matches(zttio.Key.up, .{})) {
-                    block.height = std.math.clamp(block.height - 0.05, 0, 0.6);
+                    block1.height = std.math.clamp(block1.height - 0.05, 0, 0.6);
                 } else if (key_press.matches(zttio.Key.down, .{})) {
-                    block.height = std.math.clamp(block.height + 0.05, 0, 0.6);
+                    block1.height = std.math.clamp(block1.height + 0.05, 0, 0.6);
                 }
             },
             .winsize => |winsize| {
-                try manager.renderer.resize(winsize);
+                try engine.resize(winsize);
             },
             .mouse, .mouse_leave => continue,
             else => {},
         }
 
-        try manager.renderNextFrame();
+        try engine.renderNextFrame();
     }
 
     return 0;

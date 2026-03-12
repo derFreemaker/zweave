@@ -1,8 +1,8 @@
 const std = @import("std");
 
 const Handles = @import("../handles.zig");
-const Style = @import("../styling.zig").Style;
-const Segment = @import("../cell.zig").Segment;
+const Style = @import("styling.zig").Style;
+const Segment = @import("segment.zig");
 
 const ScreenStore = @This();
 
@@ -18,7 +18,7 @@ pub const SegmentHandle = SegmentStore.Handle;
 allocator: std.mem.Allocator,
 
 str_store: StrStore,
-strs: std.ArrayList([]u8),
+strs: std.ArrayList([]const u8),
 
 style_store: StyleStore,
 styles: std.ArrayList(Style),
@@ -29,7 +29,7 @@ segments: std.ArrayList(Segment),
 pub fn init(allocator: std.mem.Allocator) std.mem.Allocator.Error!ScreenStore {
     var str_store = try StrStore.init(allocator, 256);
     errdefer str_store.deinit(allocator);
-    var strs = try std.ArrayList([]u8).initCapacity(allocator, 256);
+    var strs = try std.ArrayList([]const u8).initCapacity(allocator, 256);
     errdefer strs.deinit(allocator);
 
     var style_store = try StyleStore.init(allocator, 256);
@@ -73,7 +73,7 @@ pub fn addStr(self: *ScreenStore, str_content: []const u8) std.mem.Allocator.Err
         try self.strs.ensureTotalCapacity(self.allocator, self.strs.capacity + 1);
     }
 
-    const str: *[]u8 = &self.strs.allocatedSlice()[handle.index];
+    const str: *[]const u8 = &self.strs.allocatedSlice()[handle.index];
     str.* = str_content;
 
     return handle;

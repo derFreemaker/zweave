@@ -1,7 +1,7 @@
 const std = @import("std");
 
-const Element = @import("../element.zig");
-const LayoutConstraints = @import("../layout_constraints.zig");
+const Element = @import("../tree/element.zig");
+const LayoutConstraints = @import("../tree/layout_constraints.zig");
 
 const Container = @This();
 
@@ -50,6 +50,10 @@ pub fn computeLayout(ctx: *const Element.CalcLayoutContext) Element.CalcLayoutEr
         const child_data = ctx.tree.getLayoutDataMut(childs[i]);
         child_data.pos = pos;
 
+        if (child_constraint.isNull()) {
+            continue;
+        }
+
         const width = switch (child_constraint.width) {
             .fixed => |fixed| fixed,
             .percentage => |perc| @as(u16, @intFromFloat(@as(f32, @floatFromInt(ctx.available.x)) * perc)),
@@ -96,15 +100,12 @@ pub fn draw(ctx: *const Element.DrawContext) Element.DrawError!void {
         const child = ctx.tree.get(child_handle);
         const child_layout_data = ctx.tree.getLayoutData(child_handle);
 
-        // std.debug.print("view: col: {d} row: {d} width: {d} height: {d}\n", .{ view.col, view.row, view.width, view.height });
-        // std.debug.print("{d}-layout: x: {d} y: {d} width: {d} height: {d}\n", .{ child_handle.index, child_layout_data.pos.x, child_layout_data.pos.y, child_layout_data.size.x, child_layout_data.size.y });
         const child_view = view.view(.{
             .col = child_layout_data.pos.x,
             .row = child_layout_data.pos.y,
             .width = child_layout_data.size.x,
             .height = child_layout_data.size.y,
         });
-        // std.debug.print("{d}-view: col: {d} row: {d} width: {d} height: {d}\n", .{ child_handle.index, child_view.col, child_view.row, child_view.width, child_view.height });
 
         try child.interface.vtable.draw(&Element.DrawContext{
             .tree = ctx.tree,
@@ -113,6 +114,7 @@ pub fn draw(ctx: *const Element.DrawContext) Element.DrawError!void {
             .self_handle = child_handle,
 
             .view = child_view,
+            .screen_store = ctx.screen_store,
         });
     }
 }

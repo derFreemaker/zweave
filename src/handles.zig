@@ -82,7 +82,7 @@ pub fn HandleStoreT(comptime ParentT: type, comptime T: type, comptime safety: H
                     .index = self.handles,
                     .generation = void{},
                 };
-                self.handles += 1;
+                self.handles +|= 1;
                 try self.free_handles.ensureTotalCapacity(allocator, self.handles);
 
                 return handle;

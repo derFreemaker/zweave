@@ -7,7 +7,7 @@ const zweave = @import("zweave");
 const Block = struct {
     width: f32,
     height: f32,
-    content: []const u8,
+    content_handle: zweave.StrHandle,
     style: zweave.SegmentHandle = .invalid,
 
     pub fn element(self: *Block) zweave.Element.Interface {
@@ -31,14 +31,17 @@ const Block = struct {
         const view = &ctx.view;
 
         for (0..view.height) |h| {
-            for (0..view.width) |w| {
-                _ = try view.writeCell(@intCast(w), @intCast(h), self.content, .{
+            var col: u16 = 0;
+            while (col < view.width) {
+                col += view.writeCell(ctx.screen_store, @intCast(h), col, .{ .long_shared = self.content_handle }, .{
+                    .max_width = view.width - col,
+
                     .style = self.style,
                 });
             }
         }
 
-        _ = try view.write(0, 5, "hi Block here! ", .{
+        try view.write(4, 1, " hi Block here! ", .{
             .style = self.style,
         });
     }
@@ -67,30 +70,43 @@ pub fn main() !u8 {
     try engine.tty.hideCursor();
     try engine.tty.flush();
 
+    // std.debug.print("{any}\n", .{engine.tty.caps});
+    // std.debug.print("{any}\n", .{engine.renderer.next.width_method});
+    // std.debug.print("👍 -> {d}\n", .{engine.renderer.next.strWidth("👍")});
+
+    const str1_handle = try engine.screen_store.addStr("👍");
+    defer engine.screen_store.removeStr(str1_handle);
+
+    const str2_handle = try engine.screen_store.addStr("+");
+    defer engine.screen_store.removeStr(str2_handle);
+
+    const str3_handle = try engine.screen_store.addStr("-");
+    defer engine.screen_store.removeStr(str3_handle);
+
     const style1_handle = try engine.screen_store.addStyle(zweave.Style{
         .background = .{ .c8 = .blue },
         .underline = .{ .style = .dotted },
     });
     defer engine.screen_store.removeStyle(style1_handle);
 
+    const style2_handle = try engine.screen_store.addStyle(zweave.Style{
+        .background = .{ .c8 = .green },
+        .attrs = .{ .italic = true },
+    });
+    defer engine.screen_store.removeStyle(style2_handle);
+
     var block1 = Block{
         .width = 0.3,
         .height = 0.2,
-        .content = "#",
+        .content_handle = str1_handle,
         .style = style1_handle,
     };
     const block1_handle = try engine.tree.create(block1.element());
 
-    const style2_handle = try engine.screen_store.addStyle(zweave.Style{
-        .background = .{ .c8 = .bright_red },
-        .attrs = .{ .blink = true, .reverse = true },
-    });
-    defer engine.screen_store.removeStyle(style2_handle);
-
     var block2 = Block{
         .width = 0.5,
         .height = 0.67,
-        .content = "+",
+        .content_handle = str2_handle,
         .style = style2_handle,
     };
     const block2_handle = try engine.tree.create(block2.element());
@@ -98,18 +114,13 @@ pub fn main() !u8 {
     var block3 = Block{
         .width = 0.1,
         .height = 0.05,
-        .content = "-",
+        .content_handle = str3_handle,
     };
     const block3_handle = try engine.tree.create(block3.element());
 
     try engine.tree.addChildren(engine.root, &.{ block1_handle, block2_handle, block3_handle });
 
     while (true) {
-        if (engine.tty.reader.queue.isEmpty()) {
-            std.Thread.sleep(10 * std.time.ns_per_ms);
-            continue;
-        }
-
         var event = engine.tty.nextEvent();
         defer event.deinit(allocator);
 

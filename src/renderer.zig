@@ -3,7 +3,7 @@ const zttio = @import("zttio");
 
 const Screen = @import("screen/screen.zig");
 const ScreenStore = @import("screen/screen_store.zig");
-const Tree = @import("tree.zig");
+const Tree = @import("tree/tree.zig");
 
 const Renderer = @This();
 
@@ -13,7 +13,7 @@ next: *Screen,
 pub fn init(allocator: std.mem.Allocator, winsize: zttio.Winsize, unicode_width_method: zttio.gwidth.Method) std.mem.Allocator.Error!Renderer {
     var first_screen = try allocator.create(Screen);
     first_screen.* = try Screen.init(allocator, winsize, unicode_width_method);
-    errdefer first_screen.deinit(allocator);
+    errdefer first_screen.deinit();
 
     var second_screen = try allocator.create(Screen);
     second_screen.* = try Screen.init(allocator, winsize, unicode_width_method);
@@ -26,10 +26,10 @@ pub fn init(allocator: std.mem.Allocator, winsize: zttio.Winsize, unicode_width_
 }
 
 pub fn deinit(self: *Renderer, allocator: std.mem.Allocator) void {
-    self.prev.deinit(allocator);
+    self.prev.deinit();
     allocator.destroy(self.prev);
 
-    self.next.deinit(allocator);
+    self.next.deinit();
     allocator.destroy(self.next);
 }
 
@@ -37,9 +37,9 @@ pub inline fn getScreen(self: *const Renderer) *Screen {
     return self.next;
 }
 
-pub fn resize(self: *Renderer, allocator: std.mem.Allocator, new_winsize: zttio.Winsize) std.mem.Allocator.Error!void {
-    try self.next.resize(allocator, new_winsize);
-    try self.prev.resize(allocator, new_winsize);
+pub fn resize(self: *Renderer, new_winsize: zttio.Winsize) std.mem.Allocator.Error!void {
+    try self.next.resize(new_winsize);
+    try self.prev.resize(new_winsize);
 }
 
 pub fn render(self: *Renderer, screen_store: *const ScreenStore, tty: *zttio.Tty) error{UnableToRender}!void {

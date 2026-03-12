@@ -64,14 +64,14 @@ pub fn free(self_ptr: *anyopaque, memory: []u8, alignment: Alignment, ret_addr: 
     self.bytes_used -= memory.len;
 }
 
-pub fn prettyPrintBytesUsed(self: *const CountingAllocator, str_allocator: Allocator) Allocator.Error![]u8 {
+pub fn prettyPrintBytesUsed(self: *const CountingAllocator, writer: *std.Io.Writer) std.Io.Writer.Error!void {
     if (self.bytes_used < 3 * 1024) {
-        return std.fmt.allocPrint(str_allocator, "{d}B", .{self.bytes_used});
+        try writer.print("{d}B", .{self.bytes_used});
     } else if (self.bytes_used < 3 * 1024 * 1024) {
-        return std.fmt.allocPrint(str_allocator, "{d:.1}kB", .{@as(f32, @floatFromInt(self.bytes_used)) / 1024});
+        try writer.print("{d:.1}kB", .{@as(f32, @floatFromInt(self.bytes_used)) / 1024});
     } else if (self.bytes_used < 3 * 1024 * 1024 * 1024) {
-        return std.fmt.allocPrint(str_allocator, "{d:.1}MB", .{@as(f32, @floatFromInt(self.bytes_used)) / (1024 * 1024)});
+        try writer.print("{d:.1}MB", .{@as(f32, @floatFromInt(self.bytes_used)) / (1024 * 1024)});
     } else {
-        return std.fmt.allocPrint(str_allocator, "{d:.1}GB", .{@as(f64, @floatFromInt(self.bytes_used)) / (1024 * 1024 * 1024)});
+        try writer.print("{d:.1}GB", .{@as(f64, @floatFromInt(self.bytes_used)) / (1024 * 1024 * 1024)});
     }
 }

@@ -2,5 +2,7 @@
 .zig-cache
 zig-out
 
-# ide files
+# editor files
 .idea
+.zed
+.vscode

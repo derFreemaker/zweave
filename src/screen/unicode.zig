@@ -1,29 +1,29 @@
 const std = @import("std");
 const uucode = @import("uucode");
 
-pub const Grapheme = struct {
+pub const GraphemeCluster = struct {
     start: usize,
     len: usize,
 
-    pub fn bytes(self: Grapheme, str: []const u8) []const u8 {
+    pub fn bytes(self: GraphemeCluster, str: []const u8) []const u8 {
         return str[self.start .. self.start + self.len];
     }
 };
 
-pub const GraphemeIterator = struct {
+pub const GraphemeClusterIterator = struct {
     str: []const u8,
     inner: uucode.grapheme.Iterator(uucode.utf8.Iterator),
     start: usize = 0,
     prev_break: bool = true,
 
-    pub fn init(str: []const u8) GraphemeIterator {
+    pub fn init(str: []const u8) GraphemeClusterIterator {
         return .{
             .str = str,
             .inner = uucode.grapheme.Iterator(uucode.utf8.Iterator).init(.init(str)),
         };
     }
 
-    pub fn next(self: *GraphemeIterator) ?Grapheme {
+    pub fn next(self: *GraphemeClusterIterator) ?GraphemeCluster {
         while (self.inner.next()) |res| {
             // When leaving a break and entering a non-break, set the start of a cluster
             if (self.prev_break and !res.is_break) {

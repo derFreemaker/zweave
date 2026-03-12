@@ -2,12 +2,12 @@ const std = @import("std");
 const zttio = @import("zttio");
 
 const CountingAllocator = @import("counting_allocator.zig");
-const Tree = @import("tree.zig");
+const Tree = @import("tree/tree.zig");
 const ScreenStore = @import("screen/screen_store.zig");
-const Element = @import("element.zig");
+const Element = @import("tree/element.zig");
 const Renderer = @import("renderer.zig");
 const Container = @import("components/container.zig");
-const Style = @import("styling.zig").Style;
+const Style = @import("screen/styling.zig").Style;
 
 const Engine = @This();
 
@@ -73,7 +73,7 @@ pub fn deinit(self: *Engine) void {
 }
 
 pub inline fn resize(self: *Engine, new_winsize: zttio.Winsize) std.mem.Allocator.Error!void {
-    return self.renderer.resize(self.render_allocator.allocator(), new_winsize);
+    return self.renderer.resize(new_winsize);
 }
 
 pub const RenderError = error{
@@ -114,6 +114,7 @@ pub fn renderNextFrame(self: *Engine) RenderError!void {
         .self_handle = self.root,
 
         .view = root_view,
+        .screen_store = &self.screen_store,
     });
 
     const stats_view = screen.view(.{
@@ -124,37 +125,46 @@ pub fn renderNextFrame(self: *Engine) RenderError!void {
     });
 
     if (self.show_stats) {
-        const winsize_str = try std.fmt.allocPrint(allocator, "Winsize: c-{d}x{d}-{d} p-{d}x{d} ", .{
+        var alloc_writer = std.Io.Writer.Allocating.init(allocator);
+        defer alloc_writer.deinit();
+        const writer = &alloc_writer.writer;
+
+        writer.print("Winsize: c-{d}x{d}-{d} p-{d}x{d} \n", .{
             screen.winsize.cols,
             screen.winsize.rows,
             screen.buf.len,
             screen.winsize.x_pixel,
             screen.winsize.y_pixel,
-        });
-        defer allocator.free(winsize_str);
-        _ = try stats_view.write(0, 0, winsize_str, .{});
+        }) catch return error.UnableToRender;
 
-        var mem_pos: u16 = 0;
-        mem_pos += try stats_view.write(mem_pos, 1, "Memory Usage: ", .{});
+        {
+            _ = writer.write("Memory Usage: ") catch return error.UnableToRender;
 
-        mem_pos += try stats_view.write(mem_pos, 1, "Tree-", .{});
-        const tree_mem_str = try self.tree_allocator.prettyPrintBytesUsed(allocator);
-        defer allocator.free(tree_mem_str);
-        mem_pos += try stats_view.write(mem_pos, 1, tree_mem_str, .{});
-        mem_pos += try stats_view.write(mem_pos, 1, " ", .{});
+            _ = writer.write("Tree-") catch return error.UnableToRender;
+            self.tree_allocator.prettyPrintBytesUsed(writer) catch return error.UnableToRender;
+            writer.writeByte(' ') catch return error.UnableToRender;
 
-        mem_pos += try stats_view.write(mem_pos, 1, "Render-", .{});
-        const render_mem_str = try self.render_allocator.prettyPrintBytesUsed(allocator);
-        defer allocator.free(render_mem_str);
-        mem_pos += try stats_view.write(mem_pos, 1, render_mem_str, .{});
-        mem_pos += try stats_view.write(mem_pos, 1, " ", .{});
+            _ = writer.write("Render-") catch return error.UnableToRender;
+            self.render_allocator.prettyPrintBytesUsed(writer) catch return error.UnableToRender;
+            writer.writeByte(' ') catch return error.UnableToRender;
 
-        const mem_str = try std.fmt.allocPrint(allocator, "Memory Capacity: DrawLoop-{d:.1}kB ", .{
-            @as(f64, @floatFromInt(self.arena.queryCapacity())) / 1024,
-        });
-        defer allocator.free(mem_str);
+            writer.writeByte('\n') catch return error.UnableToRender;
+        }
 
-        _ = try stats_view.write(0, 2, mem_str, .{});
+        {
+            _ = writer.write("Memory Capacity: ") catch return error.UnableToRender;
+
+            writer.print("DrawLoop-{d:.1}kB", .{
+                @as(f64, @floatFromInt(self.arena.queryCapacity())) / 1024,
+            }) catch return error.UnableToRender;
+            writer.writeByte(' ') catch return error.UnableToRender;
+
+            writer.writeByte('\n') catch return error.UnableToRender;
+        }
+
+        writer.flush() catch return error.UnableToRender;
+
+        _ = try stats_view.write(0, 0, alloc_writer.written(), .{});
     }
 
     try self.renderer.render(&self.screen_store, self.tty);

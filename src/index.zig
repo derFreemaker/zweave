@@ -39,9 +39,5 @@ pub fn IndexT(comptime ParentT: type, comptime T: type) type {
         pub inline fn increment(self: Self, n: T) Self {
             return Self.from(self.value() + n);
         }
-
-        pub inline fn eql(self: Self, other: Self) bool {
-            return self.value() == other.value();
-        }
     };
 }

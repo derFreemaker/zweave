@@ -11,6 +11,11 @@ pub const StrHandle = ScreenStore.StrHandle;
 pub const StyleHandle = ScreenStore.StyleHandle;
 pub const SegmentHandle = ScreenStore.SegmentHandle;
 
+pub const Tracy = struct {
+    pub const Tracy = @import("tracy");
+    pub const TracyImpl = @import("tracy_impl");
+};
+
 test {
     const std = @import("std");
     std.testing.refAllDeclsRecursive(@This());

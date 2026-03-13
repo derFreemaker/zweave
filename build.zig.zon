@@ -12,6 +12,10 @@
             .url = "git+https://github.com/jacobsandlund/uucode#5f05f8f83a75caea201f12cc8ea32a2d82ea9732",
             .hash = "uucode-0.1.0-ZZjBPj96QADXyt5sqwBJUnhaDYs_qBeeKijZvlRa0eqM",
         },
+        .tracy = .{
+            .url = "https://codeberg.org/Games-by-Mason/tracy_zig/archive/v0.1.0.zip",
+            .hash = "tracy-0.0.0-R7l8BatJAQBbSjpfv7YHTyPK4AfRgyG0c--WxxFbL3S8",
+        },
     },
     .paths = .{
         "build.zig",

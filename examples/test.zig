@@ -30,18 +30,11 @@ const Block = struct {
         const self: *Block = @ptrCast(@alignCast(ctx.self.interface.ptr));
         const view = &ctx.view;
 
-        for (0..view.height) |h| {
-            var col: u16 = 0;
-            while (col < view.width) {
-                col += view.writeCell(ctx.screen_store, @intCast(h), col, .{ .long_shared = self.content_handle }, .{
-                    .max_width = view.width - col,
+        view.fill(ctx.screen_store, 0, 0, view.height, view.width, .{ .long_shared = self.content_handle }, .{
+            .style = self.style,
+        });
 
-                    .style = self.style,
-                });
-            }
-        }
-
-        try view.write(4, 1, " hi Block here! ", .{
+        try view.write(10, 1, " hi Block here! ", .{
             .style = self.style,
         });
     }
@@ -77,7 +70,7 @@ pub fn main() !u8 {
     const str1_handle = try engine.screen_store.addStr("👍");
     defer engine.screen_store.removeStr(str1_handle);
 
-    const str2_handle = try engine.screen_store.addStr("+");
+    const str2_handle = try engine.screen_store.addStr("👨‍👩‍👧‍👦");
     defer engine.screen_store.removeStr(str2_handle);
 
     const str3_handle = try engine.screen_store.addStr("-");
@@ -163,3 +156,5 @@ pub fn testPanic(msg: []const u8, ret_addr: ?usize) noreturn {
 
     std.debug.defaultPanic(msg, ret_addr);
 }
+
+pub const tracy_impl = zweave.Tracy.TracyImpl;

@@ -9,7 +9,7 @@ height: Constraint,
 width: Constraint,
 
 pub fn isNull(self: *const LayoutConstraint) bool {
-    return self.height.isNull() and self.width.isNull();
+    return self.height.isNull() or self.width.isNull();
 }
 
 pub const Constraint = union(enum) {

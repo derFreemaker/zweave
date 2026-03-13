@@ -1,4 +1,5 @@
 const std = @import("std");
+const tracy = @import("tracy");
 
 const Element = @import("../tree/element.zig");
 const LayoutConstraints = @import("../tree/layout_constraints.zig");
@@ -27,6 +28,12 @@ pub fn getLayoutConstraints(ctx: *const Element.GetLayoutConstraintsContext) Ele
 }
 
 pub fn computeLayout(ctx: *const Element.CalcLayoutContext) Element.CalcLayoutError!Element.SmallVec2 {
+    const trace_zone = tracy.Zone.begin(.{
+        .name = "[container]: layout",
+        .src = @src(),
+    });
+    defer trace_zone.end();
+
     const childs = ctx.self.children.items;
 
     var child_constraints = try ctx.allocator.alloc(LayoutConstraints, childs.len);
@@ -93,6 +100,12 @@ pub fn computeLayout(ctx: *const Element.CalcLayoutContext) Element.CalcLayoutEr
 }
 
 pub fn draw(ctx: *const Element.DrawContext) Element.DrawError!void {
+    const trace_zone = tracy.Zone.begin(.{
+        .name = "[container]: draw",
+        .src = @src(),
+    });
+    defer trace_zone.end();
+
     const view = &ctx.view;
 
     const childs = ctx.self.children.items;

@@ -1,6 +1,8 @@
 const std = @import("std");
+const tracy = @import("tracy");
 const zttio = @import("zttio");
 
+const Screen = @import("screen/screen.zig");
 const CountingAllocator = @import("counting_allocator.zig");
 const Tree = @import("tree/tree.zig");
 const ScreenStore = @import("screen/screen_store.zig");
@@ -76,18 +78,15 @@ pub inline fn resize(self: *Engine, new_winsize: zttio.Winsize) std.mem.Allocato
     return self.renderer.resize(new_winsize);
 }
 
-pub const RenderError = error{
-    UnableToRender,
-} || std.mem.Allocator.Error;
+pub const LayoutError = std.mem.Allocator.Error;
 
-pub fn renderNextFrame(self: *Engine) RenderError!void {
-    _ = self.arena.reset(.{ .retain_with_limit = 8 * 1024 * 1024 });
-    const allocator = self.arena.allocator();
+fn computeLayout(self: *Engine, allocator: std.mem.Allocator, screen: *Screen, root: *const Element) LayoutError!Element.SmallVec2 {
+    const layout_trace_zone = tracy.Zone.begin(.{
+        .name = "[engine]: layout",
+        .src = @src(),
+    });
+    defer layout_trace_zone.end();
 
-    var screen = self.renderer.getScreen();
-    screen.clear();
-
-    const root = self.tree.get(self.root);
     const needed_space = try root.interface.vtable.computeLayout.?(&Element.CalcLayoutContext{
         .allocator = allocator,
         .tree = &self.tree,
@@ -100,22 +99,58 @@ pub fn renderNextFrame(self: *Engine) RenderError!void {
             .y = screen.winsize.rows,
         },
     });
-    const root_view = screen.view(.{
-        .col = 0,
-        .row = 0,
-        .width = needed_space.x,
-        .height = needed_space.y,
+
+    return needed_space;
+}
+
+pub const RenderError = error{
+    UnableToRender,
+} || std.mem.Allocator.Error;
+
+pub fn renderNextFrame(self: *Engine) RenderError!void {
+    const trace_zone = tracy.Zone.begin(.{
+        .name = "[engine]: next_frame",
+        .src = @src(),
     });
+    defer trace_zone.end();
 
-    try root.interface.vtable.draw(&Element.DrawContext{
-        .tree = &self.tree,
+    _ = self.arena.reset(.{ .retain_with_limit = 8 * 1024 * 1024 });
+    var trace_allocator = tracy.Allocator{
+        .pool_name = "[engine]: next_frame",
+        .parent = self.arena.allocator(),
+    };
+    const allocator = trace_allocator.allocator();
 
-        .self = root,
-        .self_handle = self.root,
+    var screen = self.renderer.getScreen();
+    screen.clear();
 
-        .view = root_view,
-        .screen_store = &self.screen_store,
-    });
+    const root = self.tree.get(self.root);
+    const needed_space = try self.computeLayout(allocator, screen, root);
+
+    {
+        const draw_trace_zone = tracy.Zone.begin(.{
+            .name = "[engine]: draw",
+            .src = @src(),
+        });
+        defer draw_trace_zone.end();
+
+        const root_view = screen.view(.{
+            .col = 0,
+            .row = 0,
+            .width = needed_space.x,
+            .height = needed_space.y,
+        });
+
+        try root.interface.vtable.draw(&Element.DrawContext{
+            .tree = &self.tree,
+
+            .self = root,
+            .self_handle = self.root,
+
+            .view = root_view,
+            .screen_store = &self.screen_store,
+        });
+    }
 
     const stats_view = screen.view(.{
         .col = 0,

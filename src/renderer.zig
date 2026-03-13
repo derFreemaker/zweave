@@ -1,4 +1,5 @@
 const std = @import("std");
+const tracy = @import("tracy");
 const zttio = @import("zttio");
 
 const Screen = @import("screen/screen.zig");
@@ -43,6 +44,12 @@ pub fn resize(self: *Renderer, new_winsize: zttio.Winsize) std.mem.Allocator.Err
 }
 
 pub fn render(self: *Renderer, screen_store: *const ScreenStore, tty: *zttio.Tty) error{UnableToRender}!void {
+    const trace_zone = tracy.Zone.begin(.{
+        .name = "[renderer]: render",
+        .src = @src(),
+    });
+    defer trace_zone.end();
+
     tty.startSync() catch {};
 
     const next = self.next;

@@ -53,18 +53,15 @@ pub const Content = union(enum) {
     wide_continuation,
 
     /// 'store' only needs to be provided if a 'long_shared' content is given.
-    pub fn calcWidth(self: Content, screen: *const Screen, store: ?*const ScreenStore) u16 {
+    pub inline fn calcWidth(self: Content, screen: *const Screen, store: ?*const ScreenStore) u16 {
         return @intCast(blk: switch (self) {
-            .char => |c| break :blk screen.strWidth(&[_]u8{c}),
+            .char => break :blk 1,
             .short => |short| break :blk screen.strWidth(&short),
             .long_local => |index| break :blk screen.strWidth(screen.strs.items[index.value()]),
             .long_shared => |handle| {
                 if (store == null) @panic("store was null, event though a 'long_shared' cell content was provided");
 
                 const str = store.?.getStr(handle);
-                // if (handle.index == 0) {
-                //     std.debug.print("'{s}' -> {d}\n", .{ str, self.strWidth(str) });
-                // }
                 break :blk screen.strWidth(str);
             },
             .wide_continuation => break :blk 0,

@@ -1,4 +1,5 @@
 const std = @import("std");
+const tracy = @import("tracy");
 const zttio = @import("zttio");
 
 const Cell = @import("cell.zig");
@@ -77,6 +78,12 @@ pub fn resize(self: *Screen, new_winsize: zttio.Winsize) std.mem.Allocator.Error
 }
 
 pub fn clear(self: *Screen) void {
+    const trace_zone = tracy.Zone.begin(.{
+        .name = "[screen]: clear",
+        .src = @src(),
+    });
+    defer trace_zone.end();
+
     @memset(self.buf, Cell{});
 
     self.strs.clearRetainingCapacity();
@@ -84,11 +91,24 @@ pub fn clear(self: *Screen) void {
 }
 
 pub fn strWidth(self: *const Screen, str: []const u8) usize {
+    const trace_zone = tracy.Zone.begin(.{
+        .name = "[screen]: strWidth",
+        .src = @src(),
+        .color = .tomato,
+    });
+    defer trace_zone.end();
+
     return zttio.gwidth.gwidth(str, self.width_method);
 }
 
 /// 'store' only needs to be provided if a 'long_shared' content is given.
 pub fn fill(self: *Screen, store: ?*const ScreenStore, row: u16, col: u16, height: u16, width: u16, content: Cell.Content, opts: FillOptions) void {
+    const trace_zone = tracy.Zone.begin(.{
+        .name = "[screen]: fill",
+        .src = @src(),
+    });
+    defer trace_zone.end();
+
     if (height == 0 or width == 0) {
         return;
     }
@@ -98,18 +118,20 @@ pub fn fill(self: *Screen, store: ?*const ScreenStore, row: u16, col: u16, heigh
     std.debug.assert(col < self.winsize.cols);
     std.debug.assert(col + width - 1 < self.winsize.cols);
 
-    for (0..height) |h| {
-        if (content == .wide_continuation) {
+    if (content == .wide_continuation) {
+        for (0..height) |h| {
             for (0..width) |w| {
-                _ = self.writeCell(store, row + @as(u16, @intCast(h)), col + @as(u16, @intCast(w)), content, .{
+                _ = self.writeCell(store, row + @as(u16, @intCast(h)), col + @as(u16, @intCast(w)), .wide_continuation, .{
                     .style = opts.style,
                     .segment = opts.segment,
                 });
             }
-
-            break;
         }
 
+        return;
+    }
+
+    for (0..height) |h| {
         var w: u16 = 0;
         while (w < width) {
             w += self.writeCell(store, row + @as(u16, @intCast(h)), col + w, content, .{
@@ -125,6 +147,12 @@ pub fn fill(self: *Screen, store: ?*const ScreenStore, row: u16, col: u16, heigh
 /// zero-based indexing
 /// 'store' only needs to be provided if a 'long_shared' content is given.
 pub fn writeCell(self: *Screen, store: ?*const ScreenStore, row: u16, col: u16, content: Cell.Content, opts: WriteCellOptions) u16 {
+    const trace_zone = tracy.Zone.begin(.{
+        .name = "[screen]: writeCell",
+        .src = @src(),
+    });
+    defer trace_zone.end();
+
     std.debug.assert(row < self.winsize.rows);
     std.debug.assert(col < self.winsize.cols);
 
@@ -160,6 +188,12 @@ pub fn writeCell(self: *Screen, store: ?*const ScreenStore, row: u16, col: u16, 
 
 /// zero-based indexing
 pub fn write(self: *Screen, col: u16, row: u16, content: []const u8, opts: WriteOptions) std.mem.Allocator.Error!void {
+    const trace_zone = tracy.Zone.begin(.{
+        .name = "[screen]: write",
+        .src = @src(),
+    });
+    defer trace_zone.end();
+
     std.debug.assert(col < self.winsize.cols);
     std.debug.assert(row < self.winsize.rows);
 
@@ -178,10 +212,8 @@ pub fn write(self: *Screen, col: u16, row: u16, content: []const u8, opts: Write
                 1 => {
                     const c = str[0];
                     if (c == '\n') {
-                        if (opts.max_height) |max_height| {
-                            if (cur_row > max_height) {
-                                return;
-                            }
+                        if (opts.max_height != null and cur_row >= opts.max_height.?) {
+                            return;
                         }
 
                         cur_col = 0;
@@ -189,18 +221,15 @@ pub fn write(self: *Screen, col: u16, row: u16, content: []const u8, opts: Write
                         continue;
                     }
 
-                    if (opts.max_width) |max_width| {
-                        if (cur_col >= max_width) {
-                            continue;
-                        }
+                    if (opts.max_width != null and cur_col >= opts.max_width.?) {
+                        continue;
                     }
 
                     cell_content = .{ .char = c };
                 },
                 else => {
-                    const str_width = self.strWidth(str);
-
                     if (opts.max_width) |max_width| {
+                        const str_width = self.strWidth(str);
                         if (cur_col + str_width > max_width) {
                             continue;
                         }
@@ -367,7 +396,7 @@ pub const View = struct {
 
     /// asserts that you are writing inside the view if `.no_overflow`
     /// 'store' only needs to be provided if a 'long_shared' content is given.
-    pub fn fill(self: *View, store: ?*const ScreenStore, row: u16, col: u16, height: u16, width: u16, content: Cell.Content, opts: FillOptions) void {
+    pub fn fill(self: *const View, store: ?*const ScreenStore, row: u16, col: u16, height: u16, width: u16, content: Cell.Content, opts: FillOptions) void {
         if (height == 0 or width == 0) {
             return;
         }
@@ -378,32 +407,12 @@ pub const View = struct {
             std.debug.assert(col < self.width);
             std.debug.assert(col + width - 1 < self.width);
 
-            for (0..height) |h| {
-                var w: u16 = 0;
-                while (w < width) {
-                    w += self.writeCell(store, row + h, col + w, content, .{
-                        .max_width = width - w,
-
-                        .style = opts.style,
-                        .segment = opts.segment,
-                    });
-                }
-            }
+            self.screen.fill(store, self.row + row, self.col + col, height, width, content, opts);
         } else {
             const safe_height = @min(self.height, height);
             const safe_width = @min(self.width, width);
 
-            for (0..safe_height) |h| {
-                var w: u16 = 0;
-                while (w < safe_width) {
-                    w += self.writeCell(store, row + h, col + w, content, .{
-                        .max_width = safe_width - w,
-
-                        .style = opts.style,
-                        .segment = opts.segment,
-                    });
-                }
-            }
+            self.screen.fill(store, self.row + row, self.col + col, safe_height, safe_width, content, opts);
         }
     }
 

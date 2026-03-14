@@ -155,8 +155,8 @@ pub fn main() !u8 {
                     input.buf.growGapLeft(1);
                 } else if (key_press.matches(zttio.Key.enter, .{})) {
                     try input.buf.insertGrapheme(allocator, "\n");
-                } else if (key_press.text) |text| {
-                    try input.buf.insertGrapheme(allocator, text);
+                } else if (key_press.text != .empty) {
+                    try input.buf.insertGrapheme(allocator, key_press.text.get());
                 }
             },
             .paste => |paste| {

@@ -34,7 +34,7 @@ const Block = struct {
             .style = self.style,
         });
 
-        try view.write(10, 1, " hi Block here! ", .{
+        _ = try view.write(10, 1, " hi Block here! ", .{
             .style = self.style,
         });
     }
@@ -49,8 +49,14 @@ pub fn main() !u8 {
     defer if (gpa.deinit() == .leak) @panic("memory leaks");
     const allocator = gpa.allocator();
 
+    var trace_event_allocator = zweave.Tracy.Allocator{
+        .pool_name = "[terminal]: event_allocator",
+        .parent = allocator,
+    };
+    const event_allocator = trace_event_allocator.allocator();
+
     var engine: zweave.Engine = undefined;
-    try zweave.Engine.init_(&engine, allocator);
+    try zweave.Engine.init_(&engine, allocator, event_allocator);
     global_tty = engine.tty;
     defer {
         engine.tty.flush() catch {};
@@ -95,6 +101,7 @@ pub fn main() !u8 {
         .style = style1_handle,
     };
     const block1_handle = try engine.tree.create(block1.element());
+    defer engine.tree.destroy(block1_handle);
 
     var block2 = Block{
         .width = 0.5,
@@ -103,6 +110,7 @@ pub fn main() !u8 {
         .style = style2_handle,
     };
     const block2_handle = try engine.tree.create(block2.element());
+    defer engine.tree.destroy(block2_handle);
 
     var block3 = Block{
         .width = 0.1,
@@ -110,12 +118,24 @@ pub fn main() !u8 {
         .content_handle = str3_handle,
     };
     const block3_handle = try engine.tree.create(block3.element());
+    defer engine.tree.destroy(block3_handle);
 
-    try engine.tree.addChildren(engine.root, &.{ block1_handle, block2_handle, block3_handle });
+    var input = try zweave.Components.TextInput.init(allocator);
+    defer input.deinit(allocator);
+    const input_handle = try engine.tree.create(input.element());
+    defer engine.tree.destroy(input_handle);
+
+    try engine.tree.addChildren(engine.root, &.{ block1_handle, block2_handle, block3_handle, input_handle });
 
     while (true) {
         var event = engine.tty.nextEvent();
-        defer event.deinit(allocator);
+        defer event.deinit(event_allocator);
+
+        const trace_zone = zweave.Tracy.Zone.begin(.{
+            .name = "main_loop",
+            .src = @src(),
+        });
+        defer trace_zone.end();
 
         switch (event) {
             .key_press => |key_press| {
@@ -131,7 +151,16 @@ pub fn main() !u8 {
                     block1.height = std.math.clamp(block1.height - 0.05, 0, 0.6);
                 } else if (key_press.matches(zttio.Key.down, .{})) {
                     block1.height = std.math.clamp(block1.height + 0.05, 0, 0.6);
+                } else if (key_press.matches(zttio.Key.backspace, .{})) {
+                    input.buf.growGapLeft(1);
+                } else if (key_press.matches(zttio.Key.enter, .{})) {
+                    try input.buf.insertGrapheme(allocator, "\n");
+                } else if (key_press.text) |text| {
+                    try input.buf.insertGrapheme(allocator, text);
                 }
+            },
+            .paste => |paste| {
+                try input.buf.insertGraphemeSlice(allocator, paste);
             },
             .winsize => |winsize| {
                 try engine.resize(winsize);
@@ -157,4 +186,4 @@ pub fn testPanic(msg: []const u8, ret_addr: ?usize) noreturn {
     std.debug.defaultPanic(msg, ret_addr);
 }
 
-pub const tracy_impl = zweave.Tracy.TracyImpl;
+pub const tracy_impl = zweave.TracyImpl;

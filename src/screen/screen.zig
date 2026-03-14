@@ -79,7 +79,7 @@ pub fn resize(self: *Screen, new_winsize: zttio.Winsize) std.mem.Allocator.Error
 
 pub fn clear(self: *Screen) void {
     const trace_zone = tracy.Zone.begin(.{
-        .name = "[screen]: clear",
+        .name = "[Screen]: clear",
         .src = @src(),
     });
     defer trace_zone.end();
@@ -90,21 +90,16 @@ pub fn clear(self: *Screen) void {
     _ = self.str_arena.reset(.{ .retain_with_limit = 1024 * 1024 });
 }
 
-pub fn strWidth(self: *const Screen, str: []const u8) usize {
-    const trace_zone = tracy.Zone.begin(.{
-        .name = "[screen]: strWidth",
-        .src = @src(),
-        .color = .tomato,
-    });
-    defer trace_zone.end();
+pub inline fn strWidth(self: *const Screen, str: []const u8) usize {
+    const Unicode = @import("../common/unicode.zig");
 
-    return zttio.gwidth.gwidth(str, self.width_method);
+    return Unicode.strWidth(str, self.width_method);
 }
 
 /// 'store' only needs to be provided if a 'long_shared' content is given.
 pub fn fill(self: *Screen, store: ?*const ScreenStore, row: u16, col: u16, height: u16, width: u16, content: Cell.Content, opts: FillOptions) void {
     const trace_zone = tracy.Zone.begin(.{
-        .name = "[screen]: fill",
+        .name = "[Screen]: fill",
         .src = @src(),
     });
     defer trace_zone.end();
@@ -148,7 +143,7 @@ pub fn fill(self: *Screen, store: ?*const ScreenStore, row: u16, col: u16, heigh
 /// 'store' only needs to be provided if a 'long_shared' content is given.
 pub fn writeCell(self: *Screen, store: ?*const ScreenStore, row: u16, col: u16, content: Cell.Content, opts: WriteCellOptions) u16 {
     const trace_zone = tracy.Zone.begin(.{
-        .name = "[screen]: writeCell",
+        .name = "[Screen]: writeCell",
         .src = @src(),
     });
     defer trace_zone.end();
@@ -187,17 +182,24 @@ pub fn writeCell(self: *Screen, store: ?*const ScreenStore, row: u16, col: u16, 
 }
 
 /// zero-based indexing
-pub fn write(self: *Screen, col: u16, row: u16, content: []const u8, opts: WriteOptions) std.mem.Allocator.Error!void {
+pub fn write(self: *Screen, col: u16, row: u16, content: []const u8, opts: WriteOptions) std.mem.Allocator.Error!WriteEnd {
     const trace_zone = tracy.Zone.begin(.{
-        .name = "[screen]: write",
+        .name = "[Screen]: write",
         .src = @src(),
     });
     defer trace_zone.end();
 
+    if (opts.max_height != null and opts.max_height == 0) {
+        return WriteEnd{ .row = 0, .col = 0 };
+    }
+    if (opts.max_width != null and opts.max_width == 0) {
+        return WriteEnd{ .row = 0, .col = 0 };
+    }
+
     std.debug.assert(col < self.winsize.cols);
     std.debug.assert(row < self.winsize.rows);
 
-    const Unicode = @import("unicode.zig");
+    const Unicode = @import("../common/unicode.zig");
 
     var cur_col: u16 = 0;
     var cur_row: u16 = 0;
@@ -212,8 +214,8 @@ pub fn write(self: *Screen, col: u16, row: u16, content: []const u8, opts: Write
                 1 => {
                     const c = str[0];
                     if (c == '\n') {
-                        if (opts.max_height != null and cur_row >= opts.max_height.?) {
-                            return;
+                        if (opts.max_height != null and cur_row + 1 >= opts.max_height.?) {
+                            return WriteEnd{ .row = cur_row + 1, .col = cur_col };
                         }
 
                         cur_col = 0;
@@ -267,6 +269,11 @@ pub fn write(self: *Screen, col: u16, row: u16, content: []const u8, opts: Write
             .segment = opts.segment,
         });
     }
+
+    return WriteEnd{
+        .col = cur_col,
+        .row = cur_row,
+    };
 }
 
 /// zero-based indexing
@@ -441,15 +448,15 @@ pub const View = struct {
     /// zero-based indexing
     ///
     /// asserts that you are writing inside the view if `.no_overflow`
-    pub inline fn write(self: *const View, col: u16, row: u16, content: []const u8, opts: WriteOptions) std.mem.Allocator.Error!void {
+    pub inline fn write(self: *const View, col: u16, row: u16, content: []const u8, opts: WriteOptions) std.mem.Allocator.Error!WriteEnd {
         if (self.overflow == .no_overflow) {
             std.debug.assert(col < self.width);
             std.debug.assert(row < self.height);
         } else if (col >= self.width or row >= self.height) {
-            return;
+            return WriteEnd{ .row = 0, .col = 0 };
         }
 
-        try self.screen.write(self.col + col, self.row + row, content, .{
+        return self.screen.write(self.col + col, self.row + row, content, .{
             .max_width = if (col < self.width) self.width - col else 0,
             .max_height = if (row < self.height) self.height - row else 0,
 
@@ -532,4 +539,9 @@ pub const WriteOptions = struct {
 
     style: ScreenStore.StyleHandle = .invalid,
     segment: ScreenStore.SegmentHandle = .invalid,
+};
+
+pub const WriteEnd = struct {
+    col: u16,
+    row: u16,
 };

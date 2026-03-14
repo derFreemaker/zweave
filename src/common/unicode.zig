@@ -1,5 +1,7 @@
 const std = @import("std");
 const uucode = @import("uucode");
+const zttio = @import("zttio");
+const tracy = @import("tracy");
 
 pub const GraphemeCluster = struct {
     start: usize,
@@ -55,3 +57,15 @@ pub const GraphemeClusterIterator = struct {
         return null;
     }
 };
+
+pub const WidthMethod = zttio.gwidth.Method;
+
+pub inline fn strWidth(str: []const u8, method: WidthMethod) usize {
+    const trace_zone = tracy.Zone.begin(.{
+        .name = "[Unicode]: strWidth",
+        .src = @src(),
+    });
+    defer trace_zone.end();
+
+    return zttio.gwidth.gwidth(str, method);
+}

@@ -1,5 +1,6 @@
 const std = @import("std");
 
+const Unicode = @import("../common/unicode.zig");
 const Handles = @import("../handles.zig");
 const LayoutConstraints = @import("layout_constraints.zig");
 const Tree = @import("tree.zig");
@@ -37,9 +38,18 @@ pub const GetLayoutConstraintsError = std.mem.Allocator.Error;
 pub const GetLayoutConstraintsContext = struct {
     allocator: std.mem.Allocator,
     tree: *const Tree,
+    width_method: Unicode.WidthMethod,
 
     self: *const Element,
     self_handle: Element.Handle,
+
+    pub inline fn strWidth(self: *const GetLayoutConstraintsContext, str: []const u8) usize {
+        return Unicode.strWidth(str, self.width_method);
+    }
+
+    pub fn getSelf(self: *const GetLayoutConstraintsContext, comptime T: type) *T {
+        return @ptrCast(@alignCast(self.self.interface.ptr));
+    }
 };
 
 pub const CalcLayoutError = DrawError || std.mem.Allocator.Error;
@@ -47,11 +57,20 @@ pub const CalcLayoutError = DrawError || std.mem.Allocator.Error;
 pub const CalcLayoutContext = struct {
     allocator: std.mem.Allocator,
     tree: *Tree,
+    width_method: Unicode.WidthMethod,
 
     self: *const Element,
     self_handle: Element.Handle,
 
     available: SmallVec2,
+
+    pub inline fn strWidth(self: *const CalcLayoutContext, str: []const u8) usize {
+        return Unicode.strWidth(str, self.width_method);
+    }
+
+    pub fn getSelf(self: *const CalcLayoutContext, comptime T: type) *T {
+        return @ptrCast(@alignCast(self.self.interface.ptr));
+    }
 };
 
 //TODO: move style and segment registration outside of draw function to avoid memory allocation in draw
@@ -65,6 +84,14 @@ pub const DrawContext = struct {
 
     view: Screen.View,
     screen_store: *const ScreenStore,
+
+    pub inline fn strWidth(self: *const DrawContext, str: []const u8) usize {
+        return self.view.strWidth(str);
+    }
+
+    pub fn getSelf(self: *const DrawContext, comptime T: type) *T {
+        return @ptrCast(@alignCast(self.self.interface.ptr));
+    }
 };
 
 pub const SmallVec2 = struct {

@@ -19,6 +19,12 @@ pub fn element(self: *Container) Element.Interface {
 }
 
 pub fn getLayoutConstraints(ctx: *const Element.GetLayoutConstraintsContext) Element.GetLayoutConstraintsError!LayoutConstraints {
+    const trace_zone = tracy.Zone.begin(.{
+        .name = "[Container]: getLayoutConstraints",
+        .src = @src(),
+    });
+    defer trace_zone.end();
+
     _ = ctx;
 
     return LayoutConstraints{
@@ -29,7 +35,7 @@ pub fn getLayoutConstraints(ctx: *const Element.GetLayoutConstraintsContext) Ele
 
 pub fn computeLayout(ctx: *const Element.CalcLayoutContext) Element.CalcLayoutError!Element.SmallVec2 {
     const trace_zone = tracy.Zone.begin(.{
-        .name = "[container]: layout",
+        .name = "[Container]: computeLayout",
         .src = @src(),
     });
     defer trace_zone.end();
@@ -44,8 +50,9 @@ pub fn computeLayout(ctx: *const Element.CalcLayoutContext) Element.CalcLayoutEr
         child_constraints[i] = try child_element.interface.vtable.getLayoutConstraints(&Element.GetLayoutConstraintsContext{
             .allocator = ctx.allocator,
             .tree = ctx.tree,
-
+            .width_method = ctx.width_method,
             .self = child_element,
+
             .self_handle = child_handle,
         });
     }
@@ -101,7 +108,7 @@ pub fn computeLayout(ctx: *const Element.CalcLayoutContext) Element.CalcLayoutEr
 
 pub fn draw(ctx: *const Element.DrawContext) Element.DrawError!void {
     const trace_zone = tracy.Zone.begin(.{
-        .name = "[container]: draw",
+        .name = "[Container]: draw",
         .src = @src(),
     });
     defer trace_zone.end();

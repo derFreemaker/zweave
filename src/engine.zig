@@ -26,19 +26,19 @@ renderer: Renderer,
 root_container: Container,
 root: Element.Handle,
 
-show_stats: bool = false,
+show_stats: bool,
 stats_style: ScreenStore.StyleHandle,
 
 pub const InitError = error{UnableToInitTty} || std.mem.Allocator.Error;
 
-pub fn init_(self: *Engine, allocator: std.mem.Allocator) InitError!void {
+pub fn init_(self: *Engine, allocator: std.mem.Allocator, event_allocator: std.mem.Allocator) InitError!void {
     self.tree_allocator = CountingAllocator.init(allocator);
     self.render_allocator = CountingAllocator.init(allocator);
     self.arena = std.heap.ArenaAllocator.init(allocator);
 
     self.tty = zttio.Tty.init(
         allocator,
-        allocator,
+        event_allocator,
         .stdin(),
         .stdout(),
         .{},
@@ -58,6 +58,7 @@ pub fn init_(self: *Engine, allocator: std.mem.Allocator) InitError!void {
     self.root = try self.tree.create(self.root_container.element());
     errdefer self.tree.destroy(self.root);
 
+    self.show_stats = false;
     self.stats_style = try self.screen_store.addStyle(Style{
         .background = .{ .c8 = .black },
         .foreground = .{ .c8 = .green },
@@ -82,7 +83,7 @@ pub const LayoutError = std.mem.Allocator.Error;
 
 fn computeLayout(self: *Engine, allocator: std.mem.Allocator, screen: *Screen, root: *const Element) LayoutError!Element.SmallVec2 {
     const layout_trace_zone = tracy.Zone.begin(.{
-        .name = "[engine]: layout",
+        .name = "[Engine]: layout",
         .src = @src(),
     });
     defer layout_trace_zone.end();
@@ -90,6 +91,7 @@ fn computeLayout(self: *Engine, allocator: std.mem.Allocator, screen: *Screen, r
     const needed_space = try root.interface.vtable.computeLayout.?(&Element.CalcLayoutContext{
         .allocator = allocator,
         .tree = &self.tree,
+        .width_method = screen.width_method,
 
         .self = root,
         .self_handle = self.root,
@@ -109,14 +111,14 @@ pub const RenderError = error{
 
 pub fn renderNextFrame(self: *Engine) RenderError!void {
     const trace_zone = tracy.Zone.begin(.{
-        .name = "[engine]: next_frame",
+        .name = "[Engine]: renderNextFrame",
         .src = @src(),
     });
     defer trace_zone.end();
 
     _ = self.arena.reset(.{ .retain_with_limit = 8 * 1024 * 1024 });
     var trace_allocator = tracy.Allocator{
-        .pool_name = "[engine]: next_frame",
+        .pool_name = "[Engine]: FrameArena",
         .parent = self.arena.allocator(),
     };
     const allocator = trace_allocator.allocator();
@@ -129,7 +131,7 @@ pub fn renderNextFrame(self: *Engine) RenderError!void {
 
     {
         const draw_trace_zone = tracy.Zone.begin(.{
-            .name = "[engine]: draw",
+            .name = "[Engine]: draw",
             .src = @src(),
         });
         defer draw_trace_zone.end();

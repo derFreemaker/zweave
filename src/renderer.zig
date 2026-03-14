@@ -39,13 +39,19 @@ pub inline fn getScreen(self: *const Renderer) *Screen {
 }
 
 pub fn resize(self: *Renderer, new_winsize: zttio.Winsize) std.mem.Allocator.Error!void {
+    const trace_zone = tracy.Zone.begin(.{
+        .name = "[Renderer]: resize",
+        .src = @src(),
+    });
+    defer trace_zone.end();
+
     try self.next.resize(new_winsize);
     try self.prev.resize(new_winsize);
 }
 
 pub fn render(self: *Renderer, screen_store: *const ScreenStore, tty: *zttio.Tty) error{UnableToRender}!void {
     const trace_zone = tracy.Zone.begin(.{
-        .name = "[renderer]: render",
+        .name = "[Renderer]: render",
         .src = @src(),
     });
     defer trace_zone.end();

@@ -1,5 +1,6 @@
 const std = @import("std");
 const builtin = @import("builtin");
+const tracy = @import("tracy");
 
 const zttio = @import("zttio");
 const zweave = @import("zweave");
@@ -186,4 +187,4 @@ pub fn testPanic(msg: []const u8, ret_addr: ?usize) noreturn {
     std.debug.defaultPanic(msg, ret_addr);
 }
 
-pub const tracy_impl = zweave.TracyImpl;
+pub const tracy_impl = @import("tracy_impl");

@@ -16,9 +16,6 @@ pub const Components = struct {
     pub const TextInput = @import("components/text_input.zig");
 };
 
-pub const Tracy = @import("tracy");
-pub const TracyImpl = @import("tracy_impl");
-
 test {
     const std = @import("std");
     std.testing.refAllDeclsRecursive(@This());

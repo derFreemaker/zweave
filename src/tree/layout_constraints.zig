@@ -5,6 +5,11 @@ const Tree = @import("tree.zig");
 
 const LayoutConstraint = @This();
 
+pub const zero = LayoutConstraint{
+    .height = Constraint{ .fixed = 0 },
+    .width = Constraint{ .fixed = 0 },
+};
+
 height: Constraint,
 width: Constraint,
 

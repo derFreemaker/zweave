@@ -5,6 +5,8 @@ const zttio = @import("zttio");
 const Screen = @import("screen/screen.zig");
 const ScreenStore = @import("screen/screen_store.zig");
 const Tree = @import("tree/tree.zig");
+const Segment = @import("screen/segment.zig");
+const Style = @import("screen/styling.zig").Style;
 
 const Renderer = @This();
 
@@ -59,10 +61,76 @@ pub fn render(self: *Renderer, screen_store: *const ScreenStore, tty: *zttio.Tty
     tty.startSync() catch {};
 
     const next = self.next;
-    next.renderDirect(screen_store, tty) catch return error.UnableToRender;
+    renderDirect(next, screen_store, tty) catch return error.UnableToRender;
 
     tty.endSync() catch {};
 
     self.next = self.prev;
     self.prev = next;
+}
+
+fn renderDirect(screen: *const Screen, store: *const ScreenStore, tty: *zttio.Tty) std.Io.Writer.Error!void {
+    try tty.clearScreen(.entire);
+    try tty.moveCursor(.home);
+
+    var next_wrap: usize = screen.winsize.cols;
+    var current_style_handle: ScreenStore.StyleHandle = .invalid;
+    var current_segment_handle: ScreenStore.SegmentHandle = .invalid;
+    var current_segment: *const Segment = undefined;
+    var i: usize = 0;
+    while (i < screen.len()) : (i += 1) {
+        const cell = screen.buf[i];
+        if (i >= next_wrap) {
+            try tty.stdout.writeByte('\n');
+            next_wrap += screen.winsize.cols;
+        }
+
+        if (cell.content == .wide_continuation) {
+            continue;
+        }
+
+        if (!cell.style.eql(current_style_handle)) {
+            if (cell.style.isInvalid()) {
+                try tty.setStyling(&Style{});
+            } else {
+                const style = store.getStyle(cell.style);
+                try tty.setStyling(style);
+            }
+
+            current_style_handle = cell.style;
+        }
+
+        if (!cell.segment.eql(current_segment_handle)) {
+            if (!current_segment_handle.isInvalid()) {
+                try current_segment.end(tty.stdout);
+            }
+
+            if (!cell.segment.isInvalid()) {
+                const segment = store.getSegment(cell.segment);
+                try segment.begin(tty.stdout);
+                current_segment = segment;
+            }
+
+            current_segment_handle = cell.segment;
+        }
+
+        switch (cell.content) {
+            .char => |c| {
+                try tty.stdout.writeByte(c);
+            },
+            .short => |s| {
+                const end = std.mem.indexOf(u8, &s, &.{0}) orelse 11;
+                try tty.stdout.writeAll(s[0..end]);
+            },
+            .long_local => |index| {
+                const str = screen.strs.items[index.value()];
+                try tty.stdout.writeAll(str);
+            },
+            .long_shared => |handle| {
+                const str = store.getStr(handle);
+                try tty.stdout.writeAll(str);
+            },
+            .wide_continuation => unreachable,
+        }
+    }
 }

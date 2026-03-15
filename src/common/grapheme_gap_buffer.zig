@@ -1,4 +1,5 @@
 const std = @import("std");
+const math = @import("math.zig");
 
 const GapBuffer = @import("gap_buffer.zig").GapBuffer;
 
@@ -72,6 +73,20 @@ pub fn insertGraphemeSlice(self: *GraphemeGapBuffer, allocator: std.mem.Allocato
     while (grapheme_iter.next()) |grapheme| {
         try self.insertGrapheme(allocator, grapheme.bytes(slice));
     }
+}
+
+pub fn moveGapLeft(self: *GraphemeGapBuffer, n: usize) ?[]u8 {
+    const graphemes_len = self.graphemes_len.moveGapLeft(n) orelse return null;
+    const bytes_len = math.sum(u16, graphemes_len);
+
+    return self.buf.moveGapLeft(bytes_len) orelse @panic("grapheme buffer desync");
+}
+
+pub fn moveGapRight(self: *GraphemeGapBuffer, n: usize) ?[]u8 {
+    const graphemes_len = self.graphemes_len.moveGapRight(n) orelse return null;
+    const bytes_len = math.sum(u16, graphemes_len);
+
+    return self.buf.moveGapRight(bytes_len) orelse @panic("grapheme buffer desync");
 }
 
 pub inline fn canGrowGapLeft(self: *const GraphemeGapBuffer, n: usize) bool {

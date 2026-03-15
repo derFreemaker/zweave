@@ -2,6 +2,7 @@ const std = @import("std");
 const tracy = @import("tracy");
 const zttio = @import("zttio");
 
+const ScreenVec = @import("../common/screen_vec.zig");
 const Cell = @import("cell.zig");
 const Segment = @import("segment.zig");
 const Style = @import("styling.zig").Style;
@@ -90,269 +91,44 @@ pub fn clear(self: *Screen) void {
     _ = self.str_arena.reset(.{ .retain_with_limit = 1024 * 1024 });
 }
 
+pub inline fn len(self: *const Screen) usize {
+    return @as(usize, self.winsize.cols) * @as(usize, self.winsize.rows);
+}
+
 pub inline fn strWidth(self: *const Screen, str: []const u8) usize {
     const Unicode = @import("../common/unicode.zig");
 
     return Unicode.strWidth(str, self.width_method);
 }
 
-/// 'store' only needs to be provided if a 'long_shared' content is given.
-pub fn fill(self: *Screen, store: ?*const ScreenStore, row: u16, col: u16, height: u16, width: u16, content: Cell.Content, opts: FillOptions) void {
-    const trace_zone = tracy.Zone.begin(.{
-        .name = "[Screen]: fill",
-        .src = @src(),
-    });
-    defer trace_zone.end();
-
-    if (height == 0 or width == 0) {
-        return;
-    }
-
-    std.debug.assert(row < self.winsize.rows);
-    std.debug.assert(row + height - 1 < self.winsize.rows);
-    std.debug.assert(col < self.winsize.cols);
-    std.debug.assert(col + width - 1 < self.winsize.cols);
-
-    if (content == .wide_continuation) {
-        for (0..height) |h| {
-            for (0..width) |w| {
-                _ = self.writeCell(store, row + @as(u16, @intCast(h)), col + @as(u16, @intCast(w)), .wide_continuation, .{
-                    .style = opts.style,
-                    .segment = opts.segment,
-                });
-            }
-        }
-
-        return;
-    }
-
-    for (0..height) |h| {
-        var w: u16 = 0;
-        while (w < width) {
-            w += self.writeCell(store, row + @as(u16, @intCast(h)), col + w, content, .{
-                .max_width = width - w,
-
-                .style = opts.style,
-                .segment = opts.segment,
-            });
-        }
-    }
-}
-
-/// zero-based indexing
-/// 'store' only needs to be provided if a 'long_shared' content is given.
-pub fn writeCell(self: *Screen, store: ?*const ScreenStore, row: u16, col: u16, content: Cell.Content, opts: WriteCellOptions) u16 {
-    const trace_zone = tracy.Zone.begin(.{
-        .name = "[Screen]: writeCell",
-        .src = @src(),
-    });
-    defer trace_zone.end();
-
-    std.debug.assert(row < self.winsize.rows);
-    std.debug.assert(col < self.winsize.cols);
-
-    const width: u16 = content.calcWidth(self, store);
-    std.debug.assert(col + width <= self.winsize.cols);
-    if (opts.max_width) |max_width| {
-        if (width > max_width) {
-            self.fill(null, row, col, 1, max_width, .{ .char = ' ' }, .{
-                .style = opts.style,
-                .segment = opts.segment,
-            });
-
-            return max_width;
-        }
-    }
-
-    const cell_index = self.getCellIndex(row, col);
-    self.buf[cell_index.value()] = .{
-        .content = content,
-        .style = opts.style,
-        .segment = opts.segment,
-    };
-
-    if (width > 1) {
-        self.fill(null, row, col + 1, 1, width - 1, .wide_continuation, .{
-            .style = opts.style,
-            .segment = opts.segment,
-        });
-    }
-
-    return width;
-}
-
-/// zero-based indexing
-pub fn write(self: *Screen, col: u16, row: u16, content: []const u8, opts: WriteOptions) std.mem.Allocator.Error!WriteEnd {
-    const trace_zone = tracy.Zone.begin(.{
-        .name = "[Screen]: write",
-        .src = @src(),
-    });
-    defer trace_zone.end();
-
-    if (opts.max_height != null and opts.max_height == 0) {
-        return WriteEnd{ .row = 0, .col = 0 };
-    }
-    if (opts.max_width != null and opts.max_width == 0) {
-        return WriteEnd{ .row = 0, .col = 0 };
-    }
-
-    std.debug.assert(col < self.winsize.cols);
-    std.debug.assert(row < self.winsize.rows);
-
-    const Unicode = @import("../common/unicode.zig");
-
-    var cur_col: u16 = 0;
-    var cur_row: u16 = 0;
-    var grapheme_iter = Unicode.GraphemeClusterIterator.init(content);
-    while (grapheme_iter.next()) |grapheme| {
-        const str = grapheme.bytes(content);
-
-        var cell_content: Cell.Content = undefined;
-        if (str.len <= Cell.shortStringMaxLength) {
-            switch (str.len) {
-                0 => cell_content = .wide_continuation,
-                1 => {
-                    const c = str[0];
-                    if (c == '\n') {
-                        if (opts.max_height != null and cur_row + 1 >= opts.max_height.?) {
-                            return WriteEnd{ .row = cur_row + 1, .col = cur_col };
-                        }
-
-                        cur_col = 0;
-                        cur_row += 1;
-                        continue;
-                    }
-
-                    if (opts.max_width != null and cur_col >= opts.max_width.?) {
-                        continue;
-                    }
-
-                    cell_content = .{ .char = c };
-                },
-                else => {
-                    if (opts.max_width) |max_width| {
-                        const str_width = self.strWidth(str);
-                        if (cur_col + str_width > max_width) {
-                            continue;
-                        }
-                    }
-
-                    cell_content = .{ .short = [Cell.shortStringMaxLength]u8{ 0, 0, 0 } };
-                    @memcpy(cell_content.short[0..str.len], str);
-
-                    if (str.len < Cell.shortStringMaxLength) {
-                        cell_content.short[str.len] = 0;
-                    }
-                },
-            }
-        } else {
-            if (opts.max_width) |max_width| {
-                const str_width = self.strWidth(str);
-                if (cur_col + str_width > max_width) {
-                    continue;
-                }
-            }
-
-            const index = StrIndex.from(@intCast(self.strs.items.len));
-            if (index.value() > self.strs.capacity) {
-                try self.strs.ensureTotalCapacity(self.allocator, self.strs.capacity + 1);
-            }
-
-            const str_local: *[]u8 = self.strs.addOneAssumeCapacity();
-            str_local.* = try self.str_arena.allocator().dupe(u8, str);
-
-            cell_content = .{ .long_local = index };
-        }
-
-        cur_col += self.writeCell(null, row + cur_row, col + cur_col, cell_content, .{
-            .style = opts.style,
-            .segment = opts.segment,
-        });
-    }
-
-    return WriteEnd{
-        .col = cur_col,
-        .row = cur_row,
-    };
-}
-
-/// zero-based indexing
 pub fn readCell(self: *const Screen, col: u16, row: u16) Cell {
     return self.buf[row * self.winsize.cols + col];
 }
 
 pub inline fn getCellIndex(self: *const Screen, row: u16, col: u16) Cell.Index {
+    std.debug.assert(row < self.winsize.rows);
+    std.debug.assert(col < self.winsize.cols);
+
     return Cell.Index.from(@as(Cell.Index.UnderlyingT, row) * @as(Cell.Index.UnderlyingT, self.winsize.cols) + @as(Cell.Index.UnderlyingT, col));
 }
 
-pub fn renderDirect(self: *const Screen, store: *const ScreenStore, tty: *zttio.Tty) std.Io.Writer.Error!void {
-    try tty.clearScreen(.entire);
-    try tty.moveCursor(.home);
+pub fn addStr(self: *Screen, str: []const u8) std.mem.Allocator.Error!StrIndex {
+    const idx = StrIndex.from(@intCast(self.strs.items.len));
 
-    const end_of_buffer = @as(usize, self.winsize.cols) * @as(usize, self.winsize.rows);
+    const str_local: *[]u8 = try self.strs.addOne(self.allocator);
+    str_local.* = try self.str_arena.allocator().dupe(u8, str);
 
-    var next_wrap: usize = self.winsize.cols;
-    var current_style_handle: ScreenStore.StyleHandle = .invalid;
-    var current_segment_handle: ScreenStore.SegmentHandle = .invalid;
-    var current_segment: *const Segment = undefined;
-    var i: usize = 0;
-    while (i < end_of_buffer) : (i += 1) {
-        const cell = self.buf[i];
-        if (i >= next_wrap) {
-            try tty.stdout.writeByte('\n');
-            next_wrap += self.winsize.cols;
-        }
-
-        if (cell.content == .wide_continuation) {
-            continue;
-        }
-
-        if (!cell.style.eql(current_style_handle)) {
-            if (cell.style.isInvalid()) {
-                try tty.setStyling(&Style{});
-            } else {
-                const style = store.getStyle(cell.style);
-                try tty.setStyling(style);
-            }
-
-            current_style_handle = cell.style;
-        }
-
-        if (!cell.segment.eql(current_segment_handle)) {
-            if (!current_segment_handle.isInvalid()) {
-                try current_segment.end(tty.stdout);
-            }
-
-            if (!cell.segment.isInvalid()) {
-                const segment = store.getSegment(cell.segment);
-                try segment.begin(tty.stdout);
-                current_segment = segment;
-            }
-
-            current_segment_handle = cell.segment;
-        }
-
-        switch (cell.content) {
-            .char => |c| {
-                try tty.stdout.writeByte(c);
-            },
-            .short => |s| {
-                const end = std.mem.indexOf(u8, &s, &.{0}) orelse 11;
-                try tty.stdout.writeAll(s[0..end]);
-            },
-            .long_local => |index| {
-                const str = self.strs.items[index.value()];
-                try tty.stdout.writeAll(str);
-            },
-            .long_shared => |handle| {
-                const str = store.getStr(handle);
-                try tty.stdout.writeAll(str);
-            },
-            .wide_continuation => unreachable,
-        }
-    }
+    return idx;
 }
 
+pub inline fn getStr(self: *const Screen, idx: StrIndex) []const u8 {
+    std.debug.assert(idx != .invalid);
+    std.debug.assert(idx.value() < self.strs.items.len);
+
+    return self.strs.items[idx.value()];
+}
+
+/// asserts that you are slicing inside the screen
 pub fn view(self: *Screen, opts: View.Options) View {
     std.debug.assert(opts.col <= self.winsize.cols);
     std.debug.assert(opts.row <= self.winsize.rows);
@@ -401,34 +177,30 @@ pub const View = struct {
         return self.screen.strWidth(str);
     }
 
-    /// asserts that you are writing inside the view if `.no_overflow`
-    /// 'store' only needs to be provided if a 'long_shared' content is given.
-    pub fn fill(self: *const View, store: ?*const ScreenStore, row: u16, col: u16, height: u16, width: u16, content: Cell.Content, opts: FillOptions) void {
-        if (height == 0 or width == 0) {
-            return;
-        }
+    /// asserts that you are reading inside the view
+    pub inline fn readCell(self: *const View, row: u16, col: u16) Cell {
+        std.debug.assert(row < self.height);
+        std.debug.assert(col < self.width);
 
-        if (self.overflow == .no_overflow) {
-            std.debug.assert(row < self.height);
-            std.debug.assert(col + height - 1 < self.height);
-            std.debug.assert(col < self.width);
-            std.debug.assert(col + width - 1 < self.width);
-
-            self.screen.fill(store, self.row + row, self.col + col, height, width, content, opts);
-        } else {
-            const safe_height = @min(self.height, height);
-            const safe_width = @min(self.width, width);
-
-            self.screen.fill(store, self.row + row, self.col + col, safe_height, safe_width, content, opts);
-        }
+        return self.screen.readCell(self.col + col, self.row + row);
     }
 
-    /// zero-based indexing
-    ///
+    /// asserts that you are reading inside the view
+    pub fn getCellIndex(self: *const View, row: u16, col: u16) Cell.Index {
+        std.debug.assert(row < self.height);
+        std.debug.assert(col < self.width);
+
+        return self.screen.getCellIndex(self.row + row, self.col + col);
+    }
+
     /// asserts that you are writing inside the view if `.no_overflow`
     /// 'store' only needs to be provided if a 'long_shared' content is given.
-    pub inline fn writeCell(self: *const View, store: ?*const ScreenStore, row: u16, col: u16, content: Cell.Content, opts: WriteCellOptions) u16 {
-        if (opts.max_width == 0) return 0;
+    pub fn writeCellPos(self: *const View, store: ?*const ScreenStore, row: u16, col: u16, content: Cell.Content, opts: WriteCellOptions) u16 {
+        const trace_zone = tracy.Zone.begin(.{
+            .name = "[ScreenView]: writeCell",
+            .src = @src(),
+        });
+        defer trace_zone.end();
 
         if (self.overflow == .no_overflow) {
             std.debug.assert(col < self.width);
@@ -437,52 +209,242 @@ pub const View = struct {
             return 0;
         }
 
-        return self.screen.writeCell(store, self.row + row, self.col + col, content, .{
-            .max_width = @min(opts.max_width orelse self.width, self.width),
+        const screen = self.screen;
 
-            .style = if (opts.style.isInvalid()) self.default_style else opts.style,
-            .segment = opts.segment,
-        });
-    }
+        std.debug.assert(self.row + row < screen.winsize.rows);
+        std.debug.assert(self.col + col < screen.winsize.cols);
 
-    /// zero-based indexing
-    ///
-    /// asserts that you are writing inside the view if `.no_overflow`
-    pub inline fn write(self: *const View, col: u16, row: u16, content: []const u8, opts: WriteOptions) std.mem.Allocator.Error!WriteEnd {
-        if (self.overflow == .no_overflow) {
-            std.debug.assert(col < self.width);
-            std.debug.assert(row < self.height);
-        } else if (col >= self.width or row >= self.height) {
-            return WriteEnd{ .row = 0, .col = 0 };
+        if (opts.max_width == 0) return 0;
+
+        const width: u16 = content.calcWidth(screen, store);
+        std.debug.assert(self.col + col + width <= screen.winsize.cols);
+        if (opts.max_width) |max_width| {
+            if (width > max_width) {
+                self.fillPos(null, row, col, 1, max_width, .{ .char = ' ' }, .{
+                    .style = opts.style,
+                    .segment = opts.segment,
+                });
+
+                return max_width;
+            }
         }
 
-        return self.screen.write(self.col + col, self.row + row, content, .{
-            .max_width = if (col < self.width) self.width - col else 0,
-            .max_height = if (row < self.height) self.height - row else 0,
-
+        const cell_index = self.getCellIndex(row, col);
+        screen.buf[cell_index.value()] = .{
+            .content = content,
             .style = if (opts.style.isInvalid()) self.default_style else opts.style,
             .segment = opts.segment,
+        };
+
+        if (width > 1) {
+            self.fillPos(null, row, col + 1, 1, width - 1, .wide_continuation, .{
+                .style = opts.style,
+                .segment = opts.segment,
+            });
+        }
+
+        return width;
+    }
+
+    /// asserts that you are writing inside the view if `.no_overflow`
+    /// 'store' only needs to be provided if a 'long_shared' content is given.
+    pub fn fillPos(self: *const View, store: ?*const ScreenStore, row: u16, col: u16, height: u16, width: u16, content: Cell.Content, opts: FillOptions) void {
+        const trace_zone = tracy.Zone.begin(.{
+            .name = "[ScreenView]: fill",
+            .src = @src(),
         });
+        defer trace_zone.end();
+
+        if (self.overflow == .no_overflow) {
+            std.debug.assert(row < self.height);
+            std.debug.assert(col + height - 1 < self.height);
+            std.debug.assert(col < self.width);
+            std.debug.assert(col + width - 1 < self.width);
+        }
+
+        const screen = self.screen;
+
+        std.debug.assert(self.row + row < screen.winsize.rows);
+        std.debug.assert(self.row + row + height - 1 < screen.winsize.rows);
+        std.debug.assert(self.col + col < screen.winsize.cols);
+        std.debug.assert(self.col + col + width - 1 < screen.winsize.cols);
+
+        const safe_height = @min(self.height - row, height);
+        const safe_width = @min(self.width - col, width);
+
+        if (safe_height == 0 or safe_width == 0) {
+            return;
+        }
+
+        switch (content) {
+            .wide_continuation, .char => {
+                for (0..safe_height) |h| {
+                    const start_idx = self.getCellIndex(@intCast(row + h), col);
+                    const end_idx = self.getCellIndex(@intCast(row + h), col + safe_width - 1);
+                    @memset(screen.buf[start_idx.value() .. end_idx.value() + 1], Cell{
+                        .content = content,
+                        .style = opts.style,
+                        .segment = opts.segment,
+                    });
+                }
+            },
+            else => {
+                for (0..safe_height) |h| {
+                    var w: u16 = 0;
+                    while (w < safe_width) {
+                        w += self.writeCellPos(store, row + @as(u16, @intCast(h)), col + w, content, .{
+                            .max_width = safe_width - w,
+
+                            .style = opts.style,
+                            .segment = opts.segment,
+                        });
+                    }
+                }
+            },
+        }
     }
 
-    /// zero-based indexing
-    ///
-    /// asserts that you are reading inside the view
-    pub inline fn readCell(self: *const View, col: u16, row: u16) Cell {
-        std.debug.assert(col < self.width);
-        std.debug.assert(row < self.height);
+    /// asserts that you are writing inside the view if `.no_overflow`
+    pub fn writePos(self: *const View, row: u16, col: u16, content: []const u8, opts: WriteOptions) std.mem.Allocator.Error!ScreenVec {
+        const trace_zone = tracy.Zone.begin(.{
+            .name = "[ScreenView]: write",
+            .src = @src(),
+        });
+        defer trace_zone.end();
 
-        return self.screen.readCell(self.col + col, self.row + row);
+        if (self.overflow == .no_overflow) {
+            std.debug.assert(row < self.height);
+            std.debug.assert(col < self.width);
+        } else if (row >= self.height or col >= self.width) {
+            return .zero;
+        }
+
+        const screen = self.screen;
+
+        std.debug.assert(self.row + row < screen.winsize.rows);
+        std.debug.assert(self.col + col < screen.winsize.cols);
+
+        if (opts.max_height != null and opts.max_height == 0) {
+            return .zero;
+        }
+        if (opts.max_width != null and opts.max_width == 0) {
+            return .zero;
+        }
+
+        const Unicode = @import("../common/unicode.zig");
+
+        var cur_col: u16 = 0;
+        var cur_row: u16 = 0;
+        var grapheme_iter = Unicode.GraphemeClusterIterator.init(content);
+        while (grapheme_iter.next()) |grapheme| {
+            const str = grapheme.bytes(content);
+
+            var cell_content: Cell.Content = undefined;
+            if (str.len <= Cell.shortStringMaxLength) {
+                switch (str.len) {
+                    0 => cell_content = .wide_continuation,
+                    1 => {
+                        const c = str[0];
+                        if (c == '\n') {
+                            if (opts.max_height != null and cur_row + 1 >= opts.max_height.?) {
+                                return ScreenVec{ .row = cur_row + 1, .col = cur_col };
+                            }
+
+                            cur_col = 0;
+                            cur_row += 1;
+                            continue;
+                        }
+
+                        if (opts.max_width != null and cur_col >= opts.max_width.?) {
+                            continue;
+                        }
+
+                        cell_content = .{ .char = c };
+                    },
+                    else => {
+                        if (opts.max_width) |max_width| {
+                            const str_width = self.strWidth(str);
+                            if (cur_col + str_width > max_width) {
+                                continue;
+                            }
+                        }
+
+                        cell_content = .{ .short = [Cell.shortStringMaxLength]u8{ 0, 0, 0 } };
+                        @memcpy(cell_content.short[0..str.len], str);
+
+                        if (str.len < Cell.shortStringMaxLength) {
+                            cell_content.short[str.len] = 0;
+                        }
+                    },
+                }
+            } else {
+                if (opts.max_width) |max_width| {
+                    const str_width = self.strWidth(str);
+                    if (cur_col + str_width > max_width) {
+                        continue;
+                    }
+                }
+
+                const idx = try screen.addStr(str);
+                cell_content = .{ .long_local = idx };
+            }
+
+            cur_col += self.writeCellPos(null, row + cur_row, col + cur_col, cell_content, .{
+                .style = opts.style,
+                .segment = opts.segment,
+            });
+        }
+
+        return ScreenVec{
+            .col = cur_col,
+            .row = cur_row,
+        };
     }
 
-    /// zero-based indexing
-    ///
-    /// asserts that you are reading inside the view
-    pub inline fn getCellIndex(self: *const View, col: u16, row: u16) Cell.Index {
-        std.debug.assert(col < self.width);
-        std.debug.assert(row < self.height);
+    /// asserts that the `other_view` fits inside the view if `.no_overflow`
+    pub fn projectView(self: *const View, other_view: *const View, row: u16, col: u16) std.mem.Allocator.Error!void {
+        const trace_zone = tracy.Zone.begin(.{
+            .name = "[ScreenView]: projectView",
+            .src = @src(),
+        });
+        defer trace_zone.end();
 
-        return self.screen.getCellIndex(self.row + row, self.col + col);
+        if (self.overflow == .no_overflow) {
+            std.debug.assert(row < self.height);
+            std.debug.assert(row + other_view.height <= self.height);
+            std.debug.assert(col < self.width);
+            std.debug.assert(col + other_view.width <= self.width);
+        } else if (row >= self.height or col >= self.width) {
+            return;
+        }
+
+        const screen = self.screen;
+
+        const safe_height = @min(self.height - row, other_view.height);
+        const safe_width = @min(self.width - col, other_view.width);
+
+        for (0..safe_height) |h| {
+            const self_start_idx = self.getCellIndex(row + @as(u16, @intCast(h)), col);
+            const self_end_idx = self.getCellIndex(row + @as(u16, @intCast(h)), col + safe_width - 1);
+            const self_buf = self.screen.buf[self_start_idx.value() .. self_end_idx.value() + 1];
+
+            const other_start_idx = other_view.getCellIndex(@intCast(h), 0);
+            const other_end_idx = other_view.getCellIndex(@intCast(h), safe_width - 1);
+            const other_buf = other_view.screen.buf[other_start_idx.value() .. other_end_idx.value() + 1];
+
+            std.debug.assert(self_buf.len == other_buf.len);
+
+            for (0..other_buf.len) |i| {
+                self_buf[i] = other_buf[i];
+
+                if (other_buf[i].content == .long_local) {
+                    const other_long_idx = other_buf[i].content.long_local;
+
+                    const self_long_idx = try screen.addStr(other_view.screen.getStr(other_long_idx));
+                    self_buf[i].content.long_local = self_long_idx;
+                }
+            }
+        }
     }
 
     /// asserts that you are slicing inside the view if `.no_overflow`
@@ -539,9 +501,4 @@ pub const WriteOptions = struct {
 
     style: ScreenStore.StyleHandle = .invalid,
     segment: ScreenStore.SegmentHandle = .invalid,
-};
-
-pub const WriteEnd = struct {
-    col: u16,
-    row: u16,
 };

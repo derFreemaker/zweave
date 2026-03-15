@@ -31,11 +31,11 @@ const Block = struct {
         const self: *Block = @ptrCast(@alignCast(ctx.self.interface.ptr));
         const view = &ctx.view;
 
-        view.fill(ctx.screen_store, 0, 0, view.height, view.width, .{ .long_shared = self.content_handle }, .{
+        view.fillPos(ctx.screen_store, 0, 0, view.height, view.width, .{ .long_shared = self.content_handle }, .{
             .style = self.style,
         });
 
-        _ = try view.write(10, 1, " hi Block here! ", .{
+        _ = try view.writePos(10, 1, " hi Block here! ", .{
             .style = self.style,
         });
     }
@@ -50,7 +50,7 @@ pub fn main() !u8 {
     defer if (gpa.deinit() == .leak) @panic("memory leaks");
     const allocator = gpa.allocator();
 
-    var trace_event_allocator = zweave.Tracy.Allocator{
+    var trace_event_allocator = tracy.Allocator{
         .pool_name = "[terminal]: event_allocator",
         .parent = allocator,
     };
@@ -70,13 +70,6 @@ pub fn main() !u8 {
     try engine.tty.hideCursor();
     try engine.tty.flush();
 
-    // std.debug.print("{any}\n", .{engine.tty.caps});
-    // std.debug.print("{any}\n", .{engine.renderer.next.width_method});
-    // std.debug.print("👍 -> {d}\n", .{engine.renderer.next.strWidth("👍")});
-
-    const str1_handle = try engine.screen_store.addStr("👍");
-    defer engine.screen_store.removeStr(str1_handle);
-
     const str2_handle = try engine.screen_store.addStr("👨‍👩‍👧‍👦");
     defer engine.screen_store.removeStr(str2_handle);
 
@@ -95,15 +88,6 @@ pub fn main() !u8 {
     });
     defer engine.screen_store.removeStyle(style2_handle);
 
-    var block1 = Block{
-        .width = 0.3,
-        .height = 0.2,
-        .content_handle = str1_handle,
-        .style = style1_handle,
-    };
-    const block1_handle = try engine.tree.create(block1.element());
-    defer engine.tree.destroy(block1_handle);
-
     var block2 = Block{
         .width = 0.5,
         .height = 0.67,
@@ -121,18 +105,27 @@ pub fn main() !u8 {
     const block3_handle = try engine.tree.create(block3.element());
     defer engine.tree.destroy(block3_handle);
 
+    var screen = try zweave.Components.Screen.init(allocator, .{
+        .winsize = .{ .rows = 20, .cols = 20, .x_pixel = 0, .y_pixel = 0 },
+        .width_method = engine.tty.caps.unicode_width_method,
+    });
+    defer screen.deinit(allocator);
+    const screen_handle = try engine.tree.create(screen.element());
+    defer engine.tree.destroy(screen_handle);
+
     var input = try zweave.Components.TextInput.init(allocator);
     defer input.deinit(allocator);
     const input_handle = try engine.tree.create(input.element());
     defer engine.tree.destroy(input_handle);
 
-    try engine.tree.addChildren(engine.root, &.{ block1_handle, block2_handle, block3_handle, input_handle });
+    try engine.tree.addChildren(engine.root, &.{ screen_handle, block2_handle, block3_handle, input_handle });
 
+    var row: u16 = 0;
     while (true) {
         var event = engine.tty.nextEvent();
         defer event.deinit(event_allocator);
 
-        const trace_zone = zweave.Tracy.Zone.begin(.{
+        const trace_zone = tracy.Zone.begin(.{
             .name = "main_loop",
             .src = @src(),
         });
@@ -145,17 +138,17 @@ pub fn main() !u8 {
                 } else if (key_press.matches(zttio.Key.f1, .{})) {
                     engine.show_stats = !engine.show_stats;
                 } else if (key_press.matches(zttio.Key.left, .{})) {
-                    block1.width = std.math.clamp(block1.width - 0.05, 0, 0.75);
+                    _ = input.buf.moveGapLeft(1);
                 } else if (key_press.matches(zttio.Key.right, .{})) {
-                    block1.width = std.math.clamp(block1.width + 0.05, 0, 0.75);
-                } else if (key_press.matches(zttio.Key.up, .{})) {
-                    block1.height = std.math.clamp(block1.height - 0.05, 0, 0.6);
-                } else if (key_press.matches(zttio.Key.down, .{})) {
-                    block1.height = std.math.clamp(block1.height + 0.05, 0, 0.6);
+                    _ = input.buf.moveGapRight(1);
                 } else if (key_press.matches(zttio.Key.backspace, .{})) {
                     input.buf.growGapLeft(1);
                 } else if (key_press.matches(zttio.Key.enter, .{})) {
-                    try input.buf.insertGrapheme(allocator, "\n");
+                    const cursor_pos = try screen.view.writePos(row, 0, input.buf.firstHalf(), .{});
+                    _ = try screen.view.writePos(row, cursor_pos.col, input.buf.secondHalf(), .{});
+                    row += 1;
+
+                    input.buf.clearRetainingCapacity();
                 } else if (key_press.text != .empty) {
                     try input.buf.insertGrapheme(allocator, key_press.text.get());
                 }

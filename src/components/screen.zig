@@ -1,0 +1,66 @@
+const std = @import("std");
+const tracy = @import("tracy");
+const zttio = @import("zttio");
+
+const Unicode = @import("../common/unicode.zig");
+const UnderlyingScreen = @import("../screen/screen.zig");
+const ScreenStore = @import("../screen/screen_store.zig");
+const Element = @import("../tree/element.zig");
+const LayoutConstraints = @import("../tree/layout_constraints.zig");
+
+const Screen = @import("screen.zig");
+
+view: UnderlyingScreen.View,
+
+pub fn init(allocator: std.mem.Allocator, opts: ScreenOptions) std.mem.Allocator.Error!Screen {
+    const screen = try allocator.create(UnderlyingScreen);
+    errdefer allocator.destroy(screen);
+
+    screen.* = try UnderlyingScreen.init(allocator, opts.winsize, opts.width_method);
+    errdefer screen.deinit();
+
+    const view = screen.view(.{
+        .row = 0,
+        .col = 0,
+        .default_style = opts.default_style,
+    });
+
+    return Screen{
+        .view = view,
+    };
+}
+
+pub fn deinit(self: *Screen, allocator: std.mem.Allocator) void {
+    self.view.screen.deinit();
+    allocator.destroy(self.view.screen);
+}
+
+pub fn element(self: *Screen) Element.Interface {
+    return Element.Interface{
+        .ptr = self,
+        .vtable = &Element.Interface.VTable{
+            .getLayoutConstraints = getLayoutConstraints,
+            .draw = draw,
+        },
+    };
+}
+
+pub fn getLayoutConstraints(ctx: *const Element.GetLayoutConstraintsContext) Element.GetLayoutConstraintsError!LayoutConstraints {
+    const self = ctx.getSelf(Screen);
+    return LayoutConstraints{
+        .height = .{ .fixed = self.view.height },
+        .width = .{ .fixed = self.view.width },
+    };
+}
+
+pub fn draw(ctx: *const Element.DrawContext) Element.DrawError!void {
+    const self = ctx.getSelf(Screen);
+    try ctx.view.projectView(&self.view, 0, 0);
+}
+
+pub const ScreenOptions = struct {
+    winsize: zttio.Winsize,
+    width_method: Unicode.WidthMethod,
+
+    default_style: ScreenStore.StyleHandle = .invalid,
+};

@@ -6,6 +6,9 @@ Simple TUI library with a DOM like structure.
 
 ### [Project Overview](https://www.notion.so/3237f91634e58040b34ad0270377d683?v=3237f91634e5812b81ae000c7e0d09b8&source=copy_link)
 
+## Contributions
+I don't currently accept contributions.
+
 ## Dependecies
 
 - [zttio](https://github.com/derFreemaker/zttio)

@@ -2,14 +2,16 @@ const std = @import("std");
 const tracy = @import("tracy");
 const zttio = @import("zttio");
 
-const Screen = @import("screen/screen.zig");
-const CountingAllocator = @import("counting_allocator.zig");
-const Tree = @import("tree/tree.zig");
-const ScreenStore = @import("screen/screen_store.zig");
-const Element = @import("tree/element.zig");
-const Renderer = @import("renderer.zig");
+const ScreenVec = @import("common/screen_vec.zig");
 const Container = @import("components/container.zig");
+const Screen = @import("screen/screen.zig");
+const ScreenStore = @import("screen/screen_store.zig");
 const Style = @import("screen/styling.zig").Style;
+const Tree = @import("tree/tree.zig");
+const Element = @import("tree/element.zig");
+const CountingAllocator = @import("counting_allocator.zig");
+const Renderer = @import("renderer.zig");
+const Event = @import("event.zig").Event;
 
 const Engine = @This();
 
@@ -79,22 +81,34 @@ pub inline fn resize(self: *Engine, new_winsize: zttio.Winsize) std.mem.Allocato
     return self.renderer.resize(new_winsize);
 }
 
+pub fn dispatchEventToFocusedElement(self: *Engine, event: Event) std.mem.Allocator.Error!void {
+    if (self.tree.isFocused(.invalid)) return;
+    const element = self.tree.get(self.tree.focused_element);
+
+    try element.interface.onEvent(&Element.EventContext{
+        .tree = &self.tree,
+
+        .handle = self.tree.focused_element,
+
+        .event = &event,
+    });
+}
+
 pub const LayoutError = std.mem.Allocator.Error;
 
-fn computeLayout(self: *Engine, allocator: std.mem.Allocator, screen: *Screen, root: *const Element) LayoutError!Element.SmallVec2 {
+fn computeLayout(self: *Engine, allocator: std.mem.Allocator, screen: *Screen, root: *const Element) LayoutError!ScreenVec {
     const layout_trace_zone = tracy.Zone.begin(.{
         .name = "[Engine]: layout",
         .src = @src(),
     });
     defer layout_trace_zone.end();
 
-    const needed_space = try root.interface.vtable.computeLayout.?(&Element.CalcLayoutContext{
+    const needed_space = try root.interface.computeLayout(&Element.CalcLayoutContext{
         .allocator = allocator,
         .tree = &self.tree,
         .width_method = screen.width_method,
 
-        .self = root,
-        .self_handle = self.root,
+        .handle = self.root,
 
         .available = .{
             .x = screen.winsize.cols,
@@ -143,11 +157,10 @@ pub fn renderNextFrame(self: *Engine) RenderError!void {
             .height = needed_space.y,
         });
 
-        try root.interface.vtable.draw(&Element.DrawContext{
+        try root.interface.draw(&Element.DrawContext{
             .tree = &self.tree,
 
-            .self = root,
-            .self_handle = self.root,
+            .handle = self.root,
 
             .view = root_view,
             .screen_store = &self.screen_store,

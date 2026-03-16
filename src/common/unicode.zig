@@ -3,15 +3,6 @@ const uucode = @import("uucode");
 const zttio = @import("zttio");
 const tracy = @import("tracy");
 
-pub const GraphemeCluster = struct {
-    start: usize,
-    len: usize,
-
-    pub fn bytes(self: GraphemeCluster, str: []const u8) []const u8 {
-        return str[self.start .. self.start + self.len];
-    }
-};
-
 pub const GraphemeClusterIterator = struct {
     str: []const u8,
     inner: uucode.grapheme.Iterator(uucode.utf8.Iterator),
@@ -56,6 +47,19 @@ pub const GraphemeClusterIterator = struct {
 
         return null;
     }
+
+    pub fn skip(self: *GraphemeClusterIterator) void {
+        _ = self.next();
+    }
+
+    pub const GraphemeCluster = struct {
+        start: usize,
+        len: usize,
+
+        pub fn bytes(self: GraphemeCluster, str: []const u8) []const u8 {
+            return str[self.start .. self.start + self.len];
+        }
+    };
 };
 
 pub const WidthMethod = zttio.gwidth.Method;

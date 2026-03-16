@@ -1,11 +1,14 @@
 const std = @import("std");
+const zttio = @import("zttio");
 
+const ScreenVec = @import("../common/screen_vec.zig");
 const Unicode = @import("../common/unicode.zig");
 const Handles = @import("../handles.zig");
 const LayoutConstraints = @import("layout_constraints.zig");
 const Tree = @import("tree.zig");
-const Screen = @import("../screen/screen.zig");
+const ScreenView = @import("../screen/view.zig");
 const ScreenStore = @import("../screen/screen_store.zig");
+const Event = @import("../event.zig").Event;
 
 pub const HandleStore = Handles.HandleStoreT(Element, u16, .buildSafety);
 pub const Handle = HandleStore.Handle;
@@ -14,14 +17,40 @@ const Element = @This();
 
 pub const Interface = struct {
     pub const VTable = struct {
-        // registerInLayout: ?*const fn (self_ptr: *anyopaque, tree: *Tree) std.mem.Allocator.Error!void = null,
-        getLayoutConstraints: *const fn (ctx: *const GetLayoutConstraintsContext) GetLayoutConstraintsError!LayoutConstraints,
-        computeLayout: ?*const fn (ctx: *const CalcLayoutContext) CalcLayoutError!SmallVec2 = null,
-        draw: *const fn (ctx: *const DrawContext) DrawError!void,
+        getLayoutConstraints: *const fn (self_ptr: *anyopaque, ctx: *const GetLayoutConstraintsContext) GetLayoutConstraintsError!LayoutConstraints,
+        computeLayout: ?*const fn (self_ptr: *anyopaque, ctx: *const CalcLayoutContext) CalcLayoutError!ScreenVec = null,
+        draw: *const fn (self_ptr: *anyopaque, ctx: *const DrawContext) DrawError!void,
+
+        onEvent: ?*const fn (self_ptr: *anyopaque, ctx: *const EventContext) EventError!void = null,
     };
 
     ptr: *anyopaque,
     vtable: *const VTable,
+
+    pub inline fn getLayoutConstraints(self: Interface, ctx: *const GetLayoutConstraintsContext) GetLayoutConstraintsError!LayoutConstraints {
+        return self.vtable.getLayoutConstraints(self.ptr, ctx);
+    }
+
+    pub inline fn hasComputeLayout(self: Interface) bool {
+        return self.vtable.computeLayout != null;
+    }
+
+    pub inline fn computeLayout(self: Interface, ctx: *const CalcLayoutContext) CalcLayoutError!ScreenVec {
+        return self.vtable.computeLayout.?(self.ptr, ctx);
+    }
+
+    pub inline fn draw(self: Interface, ctx: *const DrawContext) DrawError!void {
+        return self.vtable.draw(self.ptr, ctx);
+    }
+
+    pub inline fn hasOnEvent(self: Interface) bool {
+        return self.vtable.onEvent != null;
+    }
+
+    pub inline fn onEvent(self: Interface, ctx: *const EventContext) EventError!void {
+        if (self.vtable.onEvent == null) return;
+        return self.vtable.onEvent.?(self.ptr, ctx);
+    }
 };
 
 parent: Handle = .invalid,
@@ -36,65 +65,80 @@ childIsDirty: bool = false,
 pub const GetLayoutConstraintsError = std.mem.Allocator.Error;
 
 pub const GetLayoutConstraintsContext = struct {
+    const Context = @This();
+
     allocator: std.mem.Allocator,
     tree: *const Tree,
     width_method: Unicode.WidthMethod,
 
-    self: *const Element,
-    self_handle: Element.Handle,
+    handle: Element.Handle,
 
-    pub inline fn strWidth(self: *const GetLayoutConstraintsContext, str: []const u8) usize {
+    pub inline fn strWidth(self: *const Context, str: []const u8) usize {
         return Unicode.strWidth(str, self.width_method);
     }
 
-    pub fn getSelf(self: *const GetLayoutConstraintsContext, comptime T: type) *T {
-        return @ptrCast(@alignCast(self.self.interface.ptr));
+    pub inline fn getElement(self: *const Context) *const Element {
+        return self.tree.get(self.handle);
     }
 };
 
 pub const CalcLayoutError = DrawError || std.mem.Allocator.Error;
 
 pub const CalcLayoutContext = struct {
+    const Context = @This();
+
     allocator: std.mem.Allocator,
     tree: *Tree,
     width_method: Unicode.WidthMethod,
 
-    self: *const Element,
-    self_handle: Element.Handle,
+    handle: Element.Handle,
 
-    available: SmallVec2,
+    available: ScreenVec,
 
-    pub inline fn strWidth(self: *const CalcLayoutContext, str: []const u8) usize {
+    pub inline fn strWidth(self: *const Context, str: []const u8) usize {
         return Unicode.strWidth(str, self.width_method);
     }
 
-    pub fn getSelf(self: *const CalcLayoutContext, comptime T: type) *T {
-        return @ptrCast(@alignCast(self.self.interface.ptr));
+    pub inline fn getElement(self: *const Context) *const Element {
+        return self.tree.get(self.handle);
+    }
+
+    pub inline fn getElementMut(self: *const Context) *Element {
+        return self.tree.getMut(self.handle);
     }
 };
 
-//TODO: move style and segment registration outside of draw function to avoid memory allocation in draw
 pub const DrawError = std.mem.Allocator.Error;
 
 pub const DrawContext = struct {
+    const Context = @This();
+
     tree: *const Tree,
 
-    self: *const Element,
-    self_handle: Element.Handle,
+    handle: Element.Handle,
 
-    view: Screen.View,
+    view: ScreenView,
     screen_store: *const ScreenStore,
 
-    pub inline fn strWidth(self: *const DrawContext, str: []const u8) usize {
+    pub inline fn strWidth(self: *const Context, str: []const u8) usize {
         return self.view.strWidth(str);
     }
 
-    pub fn getSelf(self: *const DrawContext, comptime T: type) *T {
-        return @ptrCast(@alignCast(self.self.interface.ptr));
+    pub inline fn getElement(self: *const Context) *const Element {
+        return self.tree.get(self.handle);
+    }
+
+    pub inline fn isFocused(self: *const Context) bool {
+        return self.tree.isFocused(self.handle);
     }
 };
 
-pub const SmallVec2 = struct {
-    x: u16,
-    y: u16,
+pub const EventError = std.mem.Allocator.Error;
+
+pub const EventContext = struct {
+    tree: *Tree,
+
+    handle: Element.Handle,
+
+    event: *const Event,
 };

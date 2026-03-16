@@ -1,7 +1,9 @@
 const std = @import("std");
 
+const ScreenVec = @import("../common/screen_vec.zig");
 const LayoutConstraints = @import("layout_constraints.zig");
 const Element = @import("element.zig");
+const Event = @import("../event.zig").Event;
 
 const Tree = @This();
 
@@ -12,6 +14,8 @@ handle_store: Element.HandleStore,
 elements: []Element,
 layout_data: []LayoutData,
 
+focused_element: Element.Handle = .invalid,
+
 pub fn init(allocator: std.mem.Allocator) std.mem.Allocator.Error!Tree {
     var element_handle_store = try Element.HandleStore.init(allocator, 256);
     errdefer element_handle_store.deinit(allocator);
@@ -21,7 +25,7 @@ pub fn init(allocator: std.mem.Allocator) std.mem.Allocator.Error!Tree {
 
     const layout_data = try allocator.alloc(LayoutData, 256);
     errdefer allocator.free(layout_data);
-    @memset(layout_data, LayoutData.none);
+    @memset(layout_data, LayoutData.zero);
 
     return Tree{
         .allocator = allocator,
@@ -30,6 +34,8 @@ pub fn init(allocator: std.mem.Allocator) std.mem.Allocator.Error!Tree {
 
         .elements = elements,
         .layout_data = layout_data,
+
+        .focused_element = .invalid,
     };
 }
 
@@ -103,7 +109,7 @@ pub fn create(self: *Tree, interface: Element.Interface) std.mem.Allocator.Error
 pub fn destroy(self: *Tree, handle: Element.Handle) void {
     if (!self.isValid(handle)) return;
 
-    self.layout_data[handle.index] = .none;
+    self.layout_data[handle.index] = .zero;
     self.handle_store.destroy(handle);
 }
 
@@ -159,12 +165,33 @@ pub fn markDirty(self: *Tree, handle: Element.Handle) void {
     }
 }
 
+pub inline fn isFocused(self: *const Tree, handle: Element.Handle) bool {
+    return self.focused_element.eql(handle);
+}
+
+pub inline fn removeFocus(self: *Tree) void {
+    self.focused_element = .invalid;
+}
+
+pub fn setFocus(self: *Tree, handle: Element.Handle) Element.EventError!void {
+    if (self.focused_element.eql(handle)) return;
+
+    self.focused_element = handle;
+    try self.get(handle).interface.onEvent(&Element.EventContext{
+        .tree = self,
+
+        .handle = handle,
+
+        .event = &.focus_in,
+    });
+}
+
 pub const LayoutData = struct {
-    pub const none = LayoutData{
-        .pos = .{ .x = 0, .y = 0 },
-        .size = .{ .x = 0, .y = 0 },
+    pub const zero = LayoutData{
+        .pos = .zero,
+        .size = .zero,
     };
 
-    pos: Element.SmallVec2,
-    size: Element.SmallVec2,
+    pos: ScreenVec,
+    size: ScreenVec,
 };

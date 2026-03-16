@@ -71,6 +71,7 @@ pub fn render(self: *Renderer, screen_store: *const ScreenStore, tty: *zttio.Tty
 
 fn renderDirect(screen: *const Screen, store: *const ScreenStore, tty: *zttio.Tty) std.Io.Writer.Error!void {
     try tty.clearScreen(.entire);
+    try tty.hideCursor();
     try tty.moveCursor(.home);
 
     var next_wrap: usize = screen.winsize.cols;
@@ -132,5 +133,14 @@ fn renderDirect(screen: *const Screen, store: *const ScreenStore, tty: *zttio.Tt
             },
             .wide_continuation => unreachable,
         }
+    }
+
+    if (screen.cursor_visible) {
+        try tty.setCursorShape(screen.cursor_shape);
+        try tty.moveCursor(.{ .pos = .{
+            .row = screen.cursor_pos.x + 1,
+            .column = screen.cursor_pos.y + 1,
+        } });
+        try tty.showCursor();
     }
 }

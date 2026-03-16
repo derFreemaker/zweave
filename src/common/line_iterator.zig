@@ -1,0 +1,41 @@
+const std = @import("std");
+
+const LineIterator = @This();
+
+buffer: []const u8,
+index: usize,
+
+pub fn init(buffer: []const u8) LineIterator {
+    return LineIterator{
+        .buffer = buffer,
+        .index = 0,
+    };
+}
+
+pub fn peek(self: *const LineIterator) ?Line {
+    var idx = std.mem.indexOfAnyPos(u8, self.buffer, self.index, &.{ '\n', '\r' }) orelse {
+        if (self.index < self.buffer.len) {
+            return Line{ .start = self.index, .end = self.buffer.len };
+        }
+
+        return null;
+    };
+    if (self.buffer[idx] == '\r' and idx + 1 < self.buffer.len and self.buffer[idx + 1] == '\n') {
+        idx += 1;
+    }
+
+    return Line{ .start = self.index, .end = idx + 1 };
+}
+
+pub inline fn toss(self: *LineIterator, line: Line) void {
+    self.index += line.end - line.start;
+}
+
+pub const Line = struct {
+    start: usize,
+    end: usize,
+
+    pub fn bytes(self: Line, line_iter: *LineIterator) []const u8 {
+        return line_iter.buffer[self.start..self.end];
+    }
+};

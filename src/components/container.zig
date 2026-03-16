@@ -1,6 +1,7 @@
 const std = @import("std");
 const tracy = @import("tracy");
 
+const ScreenVec = @import("../common/screen_vec.zig");
 const Element = @import("../tree/element.zig");
 const LayoutConstraints = @import("../tree/layout_constraints.zig");
 
@@ -18,13 +19,14 @@ pub fn element(self: *Container) Element.Interface {
     } };
 }
 
-pub fn getLayoutConstraints(ctx: *const Element.GetLayoutConstraintsContext) Element.GetLayoutConstraintsError!LayoutConstraints {
+pub fn getLayoutConstraints(self_ptr: *anyopaque, ctx: *const Element.GetLayoutConstraintsContext) Element.GetLayoutConstraintsError!LayoutConstraints {
     const trace_zone = tracy.Zone.begin(.{
         .name = "[Container]: getLayoutConstraints",
         .src = @src(),
     });
     defer trace_zone.end();
 
+    _ = self_ptr;
     _ = ctx;
 
     return LayoutConstraints{
@@ -33,32 +35,33 @@ pub fn getLayoutConstraints(ctx: *const Element.GetLayoutConstraintsContext) Ele
     };
 }
 
-pub fn computeLayout(ctx: *const Element.CalcLayoutContext) Element.CalcLayoutError!Element.SmallVec2 {
+pub fn computeLayout(self_ptr: *anyopaque, ctx: *const Element.CalcLayoutContext) Element.CalcLayoutError!ScreenVec {
     const trace_zone = tracy.Zone.begin(.{
         .name = "[Container]: computeLayout",
         .src = @src(),
     });
     defer trace_zone.end();
 
-    const childs = ctx.self.children.items;
+    _ = self_ptr;
+
+    const childs = ctx.getElement().children.items;
 
     var child_constraints = try ctx.allocator.alloc(LayoutConstraints, childs.len);
     defer ctx.allocator.free(child_constraints);
     for (childs, 0..) |child_handle, i| {
         const child_element = ctx.tree.get(child_handle);
 
-        child_constraints[i] = try child_element.interface.vtable.getLayoutConstraints(&Element.GetLayoutConstraintsContext{
+        child_constraints[i] = try child_element.interface.getLayoutConstraints(&Element.GetLayoutConstraintsContext{
             .allocator = ctx.allocator,
             .tree = ctx.tree,
             .width_method = ctx.width_method,
-            .self = child_element,
 
-            .self_handle = child_handle,
+            .handle = child_handle,
         });
     }
 
     var max_row_height: u16 = 0;
-    var pos: Element.SmallVec2 = .{ .x = 0, .y = 0 };
+    var pos: ScreenVec = .zero;
     var budget = ctx.available;
     for (child_constraints, 0..) |child_constraint, i| {
         const child_data = ctx.tree.getLayoutDataMut(childs[i]);
@@ -79,7 +82,7 @@ pub fn computeLayout(ctx: *const Element.CalcLayoutContext) Element.CalcLayoutEr
             child_data.pos.y = max_row_height;
             max_row_height = 0;
 
-            budget.x = ctx.available.x - width;
+            budget.x = ctx.available.x - @min(ctx.available.x, width);
             pos.x = width;
         } else {
             budget.x -= width;
@@ -106,16 +109,18 @@ pub fn computeLayout(ctx: *const Element.CalcLayoutContext) Element.CalcLayoutEr
     return ctx.available;
 }
 
-pub fn draw(ctx: *const Element.DrawContext) Element.DrawError!void {
+pub fn draw(self_ptr: *anyopaque, ctx: *const Element.DrawContext) Element.DrawError!void {
     const trace_zone = tracy.Zone.begin(.{
         .name = "[Container]: draw",
         .src = @src(),
     });
     defer trace_zone.end();
 
+    _ = self_ptr;
+
     const view = &ctx.view;
 
-    const childs = ctx.self.children.items;
+    const childs = ctx.getElement().children.items;
     for (childs) |child_handle| {
         const child = ctx.tree.get(child_handle);
         const child_layout_data = ctx.tree.getLayoutData(child_handle);
@@ -127,11 +132,10 @@ pub fn draw(ctx: *const Element.DrawContext) Element.DrawError!void {
             .height = child_layout_data.size.y,
         });
 
-        try child.interface.vtable.draw(&Element.DrawContext{
+        try child.interface.draw(&Element.DrawContext{
             .tree = ctx.tree,
 
-            .self = child,
-            .self_handle = child_handle,
+            .handle = child_handle,
 
             .view = child_view,
             .screen_store = ctx.screen_store,

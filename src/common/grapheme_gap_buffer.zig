@@ -75,11 +75,19 @@ pub fn insertGraphemeSlice(self: *GraphemeGapBuffer, allocator: std.mem.Allocato
     }
 }
 
+pub inline fn canMoveGapLeft(self: *const GraphemeGapBuffer, n: usize) bool {
+    return self.graphemes_len.canMoveGapLeft(n);
+}
+
 pub fn moveGapLeft(self: *GraphemeGapBuffer, n: usize) ?[]u8 {
     const graphemes_len = self.graphemes_len.moveGapLeft(n) orelse return null;
     const bytes_len = math.sum(u16, graphemes_len);
 
     return self.buf.moveGapLeft(bytes_len) orelse @panic("grapheme buffer desync");
+}
+
+pub inline fn canMoveGapRight(self: *const GraphemeGapBuffer, n: usize) bool {
+    return self.graphemes_len.canMoveGapRight(n);
 }
 
 pub fn moveGapRight(self: *GraphemeGapBuffer, n: usize) ?[]u8 {

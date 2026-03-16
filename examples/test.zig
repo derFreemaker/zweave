@@ -18,8 +18,9 @@ const Block = struct {
         } };
     }
 
-    pub fn getLayoutConstraints(ctx: *const zweave.Element.GetLayoutConstraintsContext) zweave.Element.GetLayoutConstraintsError!zweave.LayoutConstraints {
-        const self: *Block = @ptrCast(@alignCast(ctx.self.interface.ptr));
+    pub fn getLayoutConstraints(self_ptr: *anyopaque, ctx: *const zweave.Element.GetLayoutConstraintsContext) zweave.Element.GetLayoutConstraintsError!zweave.LayoutConstraints {
+        const self: *Block = @ptrCast(@alignCast(self_ptr));
+        _ = ctx;
 
         return zweave.LayoutConstraints{
             .height = .{ .percentage = self.height },
@@ -27,8 +28,8 @@ const Block = struct {
         };
     }
 
-    pub fn draw(ctx: *const zweave.Element.DrawContext) zweave.Element.DrawError!void {
-        const self: *Block = @ptrCast(@alignCast(ctx.self.interface.ptr));
+    pub fn draw(self_ptr: *anyopaque, ctx: *const zweave.Element.DrawContext) zweave.Element.DrawError!void {
+        const self: *Block = @ptrCast(@alignCast(self_ptr));
         const view = &ctx.view;
 
         view.fillPos(ctx.screen_store, 0, 0, view.height, view.width, .{ .long_shared = self.content_handle }, .{
@@ -114,7 +115,7 @@ pub fn main() !u8 {
     defer engine.tree.destroy(screen_handle);
 
     var input = try zweave.Components.TextInput.init(allocator);
-    defer input.deinit(allocator);
+    defer input.deinit();
     const input_handle = try engine.tree.create(input.element());
     defer engine.tree.destroy(input_handle);
 
@@ -131,36 +132,43 @@ pub fn main() !u8 {
         });
         defer trace_zone.end();
 
+        var consumed = false;
         switch (event) {
             .key_press => |key_press| {
-                if (key_press.matches('c', .{ .ctrl = true })) {
+                if (key_press.matches(.from('c'), .{ .ctrl = true })) {
+                    consumed = true;
                     break;
-                } else if (key_press.matches(zttio.Key.f1, .{})) {
+                } else if (key_press.matches(.f1, .{})) {
+                    consumed = true;
                     engine.show_stats = !engine.show_stats;
-                } else if (key_press.matches(zttio.Key.left, .{})) {
-                    _ = input.buf.moveGapLeft(1);
-                } else if (key_press.matches(zttio.Key.right, .{})) {
-                    _ = input.buf.moveGapRight(1);
-                } else if (key_press.matches(zttio.Key.backspace, .{})) {
-                    input.buf.growGapLeft(1);
-                } else if (key_press.matches(zttio.Key.enter, .{})) {
-                    const cursor_pos = try screen.view.writePos(row, 0, input.buf.firstHalf(), .{});
-                    _ = try screen.view.writePos(row, cursor_pos.col, input.buf.secondHalf(), .{});
-                    row += 1;
+                } else if (key_press.matches(.f2, .{})) {
+                    consumed = true;
+                    if (engine.tree.focused_element.eql(input_handle)) {
+                        engine.tree.removeFocus();
+                    } else {
+                        try engine.tree.setFocus(input_handle);
+                    }
+                } else if (key_press.matches(.enter, .{})) {
+                    consumed = true;
+                    if (engine.tree.isFocused(input_handle)) {
+                        const cursor_pos = try screen.view.writePos(row, 0, input.buf.firstHalf(), .{});
+                        _ = try screen.view.writePos(row, cursor_pos.y, input.buf.secondHalf(), .{});
+                        row += 1;
 
-                    input.buf.clearRetainingCapacity();
-                } else if (key_press.text != .empty) {
-                    try input.buf.insertGrapheme(allocator, key_press.text.get());
+                        input.buf.clearRetainingCapacity();
+                    }
                 }
-            },
-            .paste => |paste| {
-                try input.buf.insertGraphemeSlice(allocator, paste);
             },
             .winsize => |winsize| {
                 try engine.resize(winsize);
             },
-            .mouse, .mouse_leave => continue,
             else => {},
+        }
+
+        if (!consumed and !engine.tree.isFocused(.invalid)) {
+            if (zweave.Event.from(event)) |zweave_event| {
+                try engine.dispatchEventToFocusedElement(zweave_event);
+            }
         }
 
         try engine.renderNextFrame();

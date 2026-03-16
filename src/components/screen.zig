@@ -4,13 +4,14 @@ const zttio = @import("zttio");
 
 const Unicode = @import("../common/unicode.zig");
 const UnderlyingScreen = @import("../screen/screen.zig");
+const ScreenView = @import("../screen/view.zig");
 const ScreenStore = @import("../screen/screen_store.zig");
 const Element = @import("../tree/element.zig");
 const LayoutConstraints = @import("../tree/layout_constraints.zig");
 
 const Screen = @import("screen.zig");
 
-view: UnderlyingScreen.View,
+view: ScreenView,
 
 pub fn init(allocator: std.mem.Allocator, opts: ScreenOptions) std.mem.Allocator.Error!Screen {
     const screen = try allocator.create(UnderlyingScreen);
@@ -45,16 +46,19 @@ pub fn element(self: *Screen) Element.Interface {
     };
 }
 
-pub fn getLayoutConstraints(ctx: *const Element.GetLayoutConstraintsContext) Element.GetLayoutConstraintsError!LayoutConstraints {
-    const self = ctx.getSelf(Screen);
+pub fn getLayoutConstraints(self_ptr: *anyopaque, ctx: *const Element.GetLayoutConstraintsContext) Element.GetLayoutConstraintsError!LayoutConstraints {
+    const self: *Screen = @ptrCast(@alignCast(self_ptr));
+    _ = ctx;
+
     return LayoutConstraints{
         .height = .{ .fixed = self.view.height },
         .width = .{ .fixed = self.view.width },
     };
 }
 
-pub fn draw(ctx: *const Element.DrawContext) Element.DrawError!void {
-    const self = ctx.getSelf(Screen);
+pub fn draw(self_ptr: *anyopaque, ctx: *const Element.DrawContext) Element.DrawError!void {
+    const self: *Screen = @ptrCast(@alignCast(self_ptr));
+
     try ctx.view.projectView(&self.view, 0, 0);
 }
 

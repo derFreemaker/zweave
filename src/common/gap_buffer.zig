@@ -107,8 +107,12 @@ pub fn GapBuffer(comptime T: type) type {
             self.gap_size -= slice.len;
         }
 
+        pub inline fn canMoveGapLeft(self: *const Self, n: usize) bool {
+            return n <= self.cur_idx;
+        }
+
         pub fn moveGapLeft(self: *Self, n: usize) ?[]T {
-            if (n > self.cur_idx) {
+            if (!self.canMoveGapLeft(n)) {
                 @branchHint(.cold);
                 return null;
             }
@@ -122,8 +126,12 @@ pub fn GapBuffer(comptime T: type) type {
             return dst;
         }
 
+        pub inline fn canMoveGapRight(self: *const Self, n: usize) bool {
+            return n <= self.secondHalf().len;
+        }
+
         pub fn moveGapRight(self: *Self, n: usize) ?[]T {
-            if (n > self.secondHalf().len) {
+            if (!self.canMoveGapRight(n)) {
                 @branchHint(.cold);
                 return null;
             }

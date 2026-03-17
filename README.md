@@ -1,8 +1,8 @@
 # !WIP!
-I don't know if this works out the way i wan't to.
+I do not know if this works out the way I want it to.
 
 # zweave
-Simple TUI library with a DOM like structure.
+A simple TUI library, with performance in mind. (no performance here yet)
 
 ### [Project Overview](https://www.notion.so/3237f91634e58040b34ad0270377d683?v=3237f91634e5812b81ae000c7e0d09b8&source=copy_link)
 

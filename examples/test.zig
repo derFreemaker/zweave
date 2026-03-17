@@ -106,7 +106,7 @@ pub fn main() !u8 {
     const screen_handle = try engine.tree.create(screen.element());
     defer engine.tree.destroy(screen_handle);
     var screen_view_writer = screen.view.writer(&.{});
-    const screen_writer = &screen_view_writer.interface;
+    const screen_writer = &screen_view_writer.writer;
 
     var input = try zweave.Components.TextInput.init(allocator);
     defer input.deinit();
@@ -137,7 +137,7 @@ pub fn main() !u8 {
                     engine.show_stats = !engine.show_stats;
                 } else if (key_press.matches(.f2, .{})) {
                     consumed = true;
-                    if (engine.tree.focused_element.eql(input_handle)) {
+                    if (engine.tree.isFocused(input_handle)) {
                         engine.tree.removeFocus();
                     } else {
                         try engine.tree.setFocus(input_handle);

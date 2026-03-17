@@ -120,7 +120,6 @@ fn computeLayout(self: *Engine, allocator: std.mem.Allocator, screen: *Screen, r
 }
 
 pub const RenderError = error{
-    DrawFailed,
     UnableToRender,
 } || std.mem.Allocator.Error;
 
@@ -158,14 +157,17 @@ pub fn renderNextFrame(self: *Engine) RenderError!void {
             .height = needed_space.y,
         });
 
-        try root.interface.draw(&Element.DrawContext{
+        root.interface.draw(&Element.DrawContext{
             .tree = &self.tree,
 
             .handle = self.root,
 
             .view = root_view,
             .screen_store = &self.screen_store,
-        });
+        }) catch |err| switch (err) {
+            error.WriteFailed => return error.UnableToRender,
+            error.OutOfMemory => return error.OutOfMemory,
+        };
     }
 
     const stats_view = screen.view(.{
@@ -176,9 +178,8 @@ pub fn renderNextFrame(self: *Engine) RenderError!void {
     });
 
     if (self.show_stats) {
-        var alloc_writer = std.Io.Writer.Allocating.init(allocator);
-        defer alloc_writer.deinit();
-        const writer = &alloc_writer.writer;
+        var stats_writer = stats_view.writer(&.{});
+        const writer = &stats_writer.writer;
 
         writer.print("Winsize: c-{d}x{d}-{d} p-{d}x{d} \n", .{
             screen.winsize.cols,
@@ -214,8 +215,6 @@ pub fn renderNextFrame(self: *Engine) RenderError!void {
         }
 
         writer.flush() catch return error.UnableToRender;
-
-        _ = try stats_view.write(0, 0, alloc_writer.written(), .{});
     }
 
     try self.renderer.render(&self.screen_store, self.tty);

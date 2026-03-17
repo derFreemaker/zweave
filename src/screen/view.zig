@@ -400,14 +400,14 @@ pub const WriteOptions = struct {
 
 pub const ViewWriter = struct {
     view: View,
-    interface: std.Io.Writer,
+    writer: std.Io.Writer,
 
     pos: ScreenVec = .zero,
 
     pub fn init(view_ptr: *const View, buffer: []u8) ViewWriter {
         return ViewWriter{
             .view = view_ptr.*,
-            .interface = std.Io.Writer{
+            .writer = std.Io.Writer{
                 .buffer = buffer,
                 .vtable = &std.Io.Writer.VTable{
                     .drain = drain,
@@ -430,7 +430,7 @@ pub const ViewWriter = struct {
     }
 
     fn drain(w: *std.Io.Writer, data: []const []const u8, splat: usize) std.Io.Writer.Error!usize {
-        const self: *ViewWriter = @fieldParentPtr("interface", w);
+        const self: *ViewWriter = @fieldParentPtr("writer", w);
 
         if (w.end > 0) {
             try self.write(w.buffer[0..w.end]);

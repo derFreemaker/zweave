@@ -13,6 +13,13 @@ pub const zero = LayoutConstraint{
 height: Constraint,
 width: Constraint,
 
+pub fn fixed(value: u16) LayoutConstraint {
+    return LayoutConstraint{
+        .height = .{ .fixed = value },
+        .width = .{ .fixed = value },
+    };
+}
+
 pub fn isNull(self: *const LayoutConstraint) bool {
     return self.height.isNull() or self.width.isNull();
 }
@@ -24,8 +31,8 @@ pub const Constraint = union(enum) {
 
     pub fn isNull(self: Constraint) bool {
         switch (self) {
-            .fixed => |fixed| return fixed == 0,
-            .percentage => |perc| return perc == 0,
+            .fixed => |v| return v == 0,
+            .percentage => |v| return v == 0,
         }
     }
 

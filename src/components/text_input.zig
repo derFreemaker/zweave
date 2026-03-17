@@ -43,7 +43,7 @@ pub fn getLayoutConstraints(self_ptr: *anyopaque, ctx: *const Element.GetLayoutC
 
     const self: *TextInput = @ptrCast(@alignCast(self_ptr));
     if (self.buf.len() == 0) {
-        return .zero;
+        return .fixed(1);
     }
 
     var height: u16 = 0;
@@ -81,8 +81,8 @@ pub fn getLayoutConstraints(self_ptr: *anyopaque, ctx: *const Element.GetLayoutC
     }
 
     return LayoutConstraints{
-        .height = .{ .fixed = @max(height, 1) },
-        .width = .{ .fixed = @max(max_width, 1) },
+        .height = .{ .fixed = height },
+        .width = .{ .fixed = max_width },
     };
 }
 
@@ -93,12 +93,15 @@ pub fn draw(self_ptr: *anyopaque, ctx: *const Element.DrawContext) Element.DrawE
     });
     defer trace_zone.end();
 
+    std.debug.assert(ctx.view.size.x > 0);
+    std.debug.assert(ctx.view.size.y > 0);
+
     const self: *TextInput = @ptrCast(@alignCast(self_ptr));
     var view_writer = ctx.view.writer(&.{});
-    const writer = &view_writer.interface;
+    const writer = &view_writer.writer;
 
-    writer.writeAll(self.buf.firstHalf()) catch return error.DrawFailed;
-    writer.flush() catch return error.DrawFailed;
+    try writer.writeAll(self.buf.firstHalf());
+    try writer.flush();
 
     if (ctx.isFocused() and
         (view_writer.pos.x <= ctx.view.size.x and
@@ -109,8 +112,8 @@ pub fn draw(self_ptr: *anyopaque, ctx: *const Element.DrawContext) Element.DrawE
         ctx.view.setCursorVisibility(true);
     }
 
-    writer.writeAll(self.buf.secondHalf()) catch return error.DrawFailed;
-    writer.flush() catch return error.DrawFailed;
+    try writer.writeAll(self.buf.secondHalf());
+    try writer.flush();
 }
 
 pub fn onEvent(self_ptr: *anyopaque, ctx: *const Element.EventContext) Element.EventError!void {

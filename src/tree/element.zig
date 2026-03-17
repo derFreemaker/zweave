@@ -108,7 +108,7 @@ pub const CalcLayoutContext = struct {
     }
 };
 
-pub const DrawError = error{DrawFailed} || std.mem.Allocator.Error;
+pub const DrawError = std.Io.Writer.Error || std.mem.Allocator.Error;
 
 pub const DrawContext = struct {
     const Context = @This();

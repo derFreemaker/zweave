@@ -3,7 +3,7 @@ const zttio = @import("zttio");
 
 const ScreenVec = @import("../common/screen_vec.zig");
 const Unicode = @import("../common/unicode.zig");
-const Handles = @import("../handles.zig");
+const Handles = @import("../common/handles.zig");
 const LayoutConstraints = @import("layout_constraints.zig");
 const Tree = @import("tree.zig");
 const ScreenView = @import("../screen/view.zig");

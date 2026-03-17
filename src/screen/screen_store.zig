@@ -1,6 +1,6 @@
 const std = @import("std");
 
-const Handles = @import("../handles.zig");
+const Handles = @import("../common/handles.zig");
 const Style = @import("styling.zig").Style;
 const Segment = @import("segment.zig");
 

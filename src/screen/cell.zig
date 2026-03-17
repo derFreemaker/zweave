@@ -1,11 +1,10 @@
 const std = @import("std");
 const zttio = @import("zttio");
 
+const IndexT = @import("../common/index.zig").IndexT;
 const Segment = @import("segment.zig");
 const Screen = @import("screen.zig");
 const ScreenStore = @import("screen_store.zig");
-
-const IndexT = @import("../index.zig").IndexT;
 
 pub const Index = IndexT(Cell, u32);
 

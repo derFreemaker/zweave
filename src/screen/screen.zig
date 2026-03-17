@@ -3,12 +3,12 @@ const tracy = @import("tracy");
 const zttio = @import("zttio");
 
 const ScreenVec = @import("../common/screen_vec.zig");
+const IndexT = @import("../common/index.zig").IndexT;
 const Cell = @import("cell.zig");
 const Segment = @import("segment.zig");
 const Style = @import("styling.zig").Style;
 const ScreenStore = @import("screen_store.zig");
 const View = @import("view.zig");
-const IndexT = @import("../index.zig").IndexT;
 
 pub const CursorShape = zttio.ctlseqs.Cursor.Shape;
 

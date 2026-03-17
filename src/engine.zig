@@ -3,13 +3,13 @@ const tracy = @import("tracy");
 const zttio = @import("zttio");
 
 const ScreenVec = @import("common/screen_vec.zig");
+const CountingAllocator = @import("common/counting_allocator.zig");
 const Container = @import("components/container.zig");
 const Screen = @import("screen/screen.zig");
 const ScreenStore = @import("screen/screen_store.zig");
 const Style = @import("screen/styling.zig").Style;
 const Tree = @import("tree/tree.zig");
 const Element = @import("tree/element.zig");
-const CountingAllocator = @import("counting_allocator.zig");
 const Renderer = @import("renderer.zig");
 const Event = @import("event.zig").Event;
 

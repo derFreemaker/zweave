@@ -56,7 +56,7 @@ pub const Interface = struct {
 parent: Handle = .invalid,
 interface: Interface,
 
-//TODO: move children into a map for faster modification
+//TODO: optimize children faster modification
 children: std.ArrayList(Handle) = .empty,
 
 isDirty: bool = true,
@@ -136,9 +136,23 @@ pub const DrawContext = struct {
 pub const EventError = std.mem.Allocator.Error;
 
 pub const EventContext = struct {
+    const Context = @This();
+
     tree: *Tree,
 
     handle: Element.Handle,
 
     event: *const Event,
+
+    pub inline fn getElement(self: *const Context) *const Element {
+        return self.tree.get(self.handle);
+    }
+
+    pub inline fn isFocused(self: *const Context) bool {
+        return self.tree.isFocused(self.handle);
+    }
+
+    pub inline fn markDirty(self: *const Context) void {
+        self.tree.markDirty(self.handle);
+    }
 };

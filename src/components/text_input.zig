@@ -124,22 +124,27 @@ pub fn onEvent(self_ptr: *anyopaque, ctx: *const Element.EventContext) Element.E
             if (key_press.matches(.left, .{})) {
                 if (self.buf.canMoveGapLeft(1)) {
                     _ = self.buf.moveGapLeft(1);
+                    ctx.markDirty();
                 }
             } else if (key_press.matches(.right, .{})) {
                 if (self.buf.canMoveGapRight(1)) {
                     _ = self.buf.moveGapRight(1);
+                    ctx.markDirty();
                 }
             } else if (key_press.matches(.backspace, .{})) {
                 if (self.buf.canGrowGapLeft(1)) {
                     self.buf.growGapLeft(1);
+                    ctx.markDirty();
                 }
             } else if (key_press.text != .empty) {
                 try self.buf.insertGrapheme(self.allocator, key_press.text.get());
+                ctx.markDirty();
             }
         },
 
         .paste => |paste| {
             try self.buf.insertGraphemeSlice(self.allocator, paste);
+            ctx.markDirty();
         },
 
         else => {},

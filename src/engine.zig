@@ -120,6 +120,7 @@ fn computeLayout(self: *Engine, allocator: std.mem.Allocator, screen: *Screen, r
 }
 
 pub const RenderError = error{
+    DrawFailed,
     UnableToRender,
 } || std.mem.Allocator.Error;
 
@@ -214,7 +215,7 @@ pub fn renderNextFrame(self: *Engine) RenderError!void {
 
         writer.flush() catch return error.UnableToRender;
 
-        _ = try stats_view.writePos(0, 0, alloc_writer.written(), .{});
+        _ = try stats_view.write(0, 0, alloc_writer.written(), .{});
     }
 
     try self.renderer.render(&self.screen_store, self.tty);

@@ -154,10 +154,8 @@ pub fn view(self: *Screen, opts: View.Options) View {
     return View{
         .screen = self,
 
-        .col = opts.col,
-        .row = opts.row,
-        .width = w,
-        .height = h,
+        .pos = .{ .x = opts.col, .y = opts.row },
+        .size = .{ .x = w, .y = h },
 
         .default_style = opts.default_style,
         .overflow = opts.overflow,

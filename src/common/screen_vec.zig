@@ -7,3 +7,7 @@ pub const zero = ScreenVec{
 
 x: u16,
 y: u16,
+
+pub fn inside(self: ScreenVec, other: ScreenVec) bool {
+    return self.x < other.x and self.y < other.y;
+}

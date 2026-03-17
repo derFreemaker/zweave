@@ -82,7 +82,7 @@ pub const GetLayoutConstraintsContext = struct {
     }
 };
 
-pub const CalcLayoutError = DrawError || std.mem.Allocator.Error;
+pub const CalcLayoutError = std.mem.Allocator.Error;
 
 pub const CalcLayoutContext = struct {
     const Context = @This();
@@ -108,7 +108,7 @@ pub const CalcLayoutContext = struct {
     }
 };
 
-pub const DrawError = std.mem.Allocator.Error;
+pub const DrawError = error{DrawFailed} || std.mem.Allocator.Error;
 
 pub const DrawContext = struct {
     const Context = @This();

@@ -3,6 +3,7 @@ const tracy = @import("tracy");
 const zttio = @import("zttio");
 
 const Unicode = @import("../common/unicode.zig");
+const ScreenVec = @import("../common/screen_vec.zig");
 const UnderlyingScreen = @import("../screen/screen.zig");
 const ScreenView = @import("../screen/view.zig");
 const ScreenStore = @import("../screen/screen_store.zig");
@@ -17,7 +18,16 @@ pub fn init(allocator: std.mem.Allocator, opts: ScreenOptions) std.mem.Allocator
     const screen = try allocator.create(UnderlyingScreen);
     errdefer allocator.destroy(screen);
 
-    screen.* = try UnderlyingScreen.init(allocator, opts.winsize, opts.width_method);
+    screen.* = try UnderlyingScreen.init(
+        allocator,
+        .{
+            .rows = opts.size.y,
+            .cols = opts.size.x,
+            .x_pixel = 0,
+            .y_pixel = 0,
+        },
+        opts.width_method,
+    );
     errdefer screen.deinit();
 
     const view = screen.view(.{
@@ -51,8 +61,8 @@ pub fn getLayoutConstraints(self_ptr: *anyopaque, ctx: *const Element.GetLayoutC
     _ = ctx;
 
     return LayoutConstraints{
-        .height = .{ .fixed = self.view.height },
-        .width = .{ .fixed = self.view.width },
+        .height = .{ .fixed = self.view.size.y },
+        .width = .{ .fixed = self.view.size.x },
     };
 }
 
@@ -63,7 +73,7 @@ pub fn draw(self_ptr: *anyopaque, ctx: *const Element.DrawContext) Element.DrawE
 }
 
 pub const ScreenOptions = struct {
-    winsize: zttio.Winsize,
+    size: ScreenVec,
     width_method: Unicode.WidthMethod,
 
     default_style: ScreenStore.StyleHandle = .invalid,

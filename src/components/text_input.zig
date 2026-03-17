@@ -94,16 +94,23 @@ pub fn draw(self_ptr: *anyopaque, ctx: *const Element.DrawContext) Element.DrawE
     defer trace_zone.end();
 
     const self: *TextInput = @ptrCast(@alignCast(self_ptr));
-    const view = &ctx.view;
+    var view_writer = ctx.view.writer(&.{});
+    const writer = &view_writer.interface;
 
-    const end_pos = try view.writePos(0, 0, self.buf.firstHalf(), .{});
-    _ = try view.writePos(end_pos.x, end_pos.y, self.buf.secondHalf(), .{});
+    writer.writeAll(self.buf.firstHalf()) catch return error.DrawFailed;
+    writer.flush() catch return error.DrawFailed;
 
-    if (ctx.isFocused()) {
-        view.setCursorPos(end_pos);
-        view.setCursorShape(.blinking_bar);
-        view.setCursorVisibility(true);
+    if (ctx.isFocused() and
+        (view_writer.pos.x <= ctx.view.size.x and
+            view_writer.pos.y < ctx.view.size.y))
+    {
+        ctx.view.setCursorPos(view_writer.pos);
+        ctx.view.setCursorShape(.blinking_bar);
+        ctx.view.setCursorVisibility(true);
     }
+
+    writer.writeAll(self.buf.secondHalf()) catch return error.DrawFailed;
+    writer.flush() catch return error.DrawFailed;
 }
 
 pub fn onEvent(self_ptr: *anyopaque, ctx: *const Element.EventContext) Element.EventError!void {

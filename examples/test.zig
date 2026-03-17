@@ -32,11 +32,11 @@ const Block = struct {
         const self: *Block = @ptrCast(@alignCast(self_ptr));
         const view = &ctx.view;
 
-        view.fillPos(ctx.screen_store, 0, 0, view.height, view.width, .{ .long_shared = self.content_handle }, .{
+        view.fill(ctx.screen_store, 0, 0, view.size.y, view.size.x, .{ .long_shared = self.content_handle }, .{
             .style = self.style,
         });
 
-        _ = try view.writePos(10, 1, " hi Block here! ", .{
+        _ = try view.write(10, 1, " hi Block here! ", .{
             .style = self.style,
         });
     }
@@ -98,30 +98,23 @@ pub fn main() !u8 {
     const block2_handle = try engine.tree.create(block2.element());
     defer engine.tree.destroy(block2_handle);
 
-    var block3 = Block{
-        .width = 0.1,
-        .height = 0.05,
-        .content_handle = str3_handle,
-    };
-    const block3_handle = try engine.tree.create(block3.element());
-    defer engine.tree.destroy(block3_handle);
-
     var screen = try zweave.Components.Screen.init(allocator, .{
-        .winsize = .{ .rows = 20, .cols = 20, .x_pixel = 0, .y_pixel = 0 },
+        .size = .{ .x = 60, .y = 30 },
         .width_method = engine.tty.caps.unicode_width_method,
     });
     defer screen.deinit(allocator);
     const screen_handle = try engine.tree.create(screen.element());
     defer engine.tree.destroy(screen_handle);
+    var screen_view_writer = screen.view.writer(&.{});
+    const screen_writer = &screen_view_writer.interface;
 
     var input = try zweave.Components.TextInput.init(allocator);
     defer input.deinit();
     const input_handle = try engine.tree.create(input.element());
     defer engine.tree.destroy(input_handle);
 
-    try engine.tree.addChildren(engine.root, &.{ screen_handle, block2_handle, block3_handle, input_handle });
+    try engine.tree.addChildren(engine.root, &.{ screen_handle, block2_handle, input_handle });
 
-    var row: u16 = 0;
     while (true) {
         var event = engine.tty.nextEvent();
         defer event.deinit(event_allocator);
@@ -129,6 +122,7 @@ pub fn main() !u8 {
         const trace_zone = tracy.Zone.begin(.{
             .name = "main_loop",
             .src = @src(),
+            .callstack_depth = 62,
         });
         defer trace_zone.end();
 
@@ -151,9 +145,10 @@ pub fn main() !u8 {
                 } else if (key_press.matches(.enter, .{})) {
                     consumed = true;
                     if (engine.tree.isFocused(input_handle)) {
-                        const cursor_pos = try screen.view.writePos(row, 0, input.buf.firstHalf(), .{});
-                        _ = try screen.view.writePos(row, cursor_pos.y, input.buf.secondHalf(), .{});
-                        row += 1;
+                        try screen_writer.writeAll(input.buf.firstHalf());
+                        try screen_writer.writeAll(input.buf.secondHalf());
+                        try screen_writer.writeByte('\n');
+                        try screen_writer.flush();
 
                         input.buf.clearRetainingCapacity();
                     }
@@ -165,7 +160,7 @@ pub fn main() !u8 {
             else => {},
         }
 
-        if (!consumed and !engine.tree.isFocused(.invalid)) {
+        if (!consumed) {
             if (zweave.Event.from(event)) |zweave_event| {
                 try engine.dispatchEventToFocusedElement(zweave_event);
             }
@@ -189,3 +184,15 @@ pub fn testPanic(msg: []const u8, ret_addr: ?usize) noreturn {
 }
 
 pub const tracy_impl = @import("tracy_impl");
+pub const tracy_options: tracy.Options = .{
+    .on_demand = false,
+    .no_broadcast = false,
+    .only_localhost = false,
+    .only_ipv4 = false,
+    .delayed_init = false,
+    .manual_lifetime = false,
+    .verbose = true,
+    .data_port = null,
+    .broadcast_port = null,
+    .default_callstack_depth = 20,
+};

@@ -66,8 +66,11 @@ pub const Interface = struct {
 parent: Handle = .invalid,
 interface: Interface,
 
-//TODO: optimize children faster modification
-children: std.ArrayList(Handle) = .empty,
+prev_sibling: Handle = .invalid,
+next_sibling: Handle = .invalid,
+
+first_child: Handle = .invalid,
+last_child: Handle = .invalid,
 
 isDirty: bool = true,
 childIsDirty: bool = false,

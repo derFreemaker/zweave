@@ -40,10 +40,6 @@ pub fn init(allocator: std.mem.Allocator) std.mem.Allocator.Error!Tree {
 }
 
 pub fn deinit(self: *Tree) void {
-    for (0..self.handle_store.maxUsed()) |i| {
-        self.elements[i].children.deinit(self.allocator);
-    }
-
     self.handle_store.deinit(self.allocator);
 
     self.allocator.free(self.elements);
@@ -58,7 +54,7 @@ pub fn clear(self: *Tree) void {
     self.handle_store.clear();
 }
 
-fn growBuffers(self: *Tree) std.mem.Allocator.Error!void {
+fn grow(self: *Tree) std.mem.Allocator.Error!void {
     const new_size = self.elements.len + self.elements.len;
 
     if (self.allocator.remap(self.elements, new_size)) |new_elements| {
@@ -85,7 +81,7 @@ fn growBuffers(self: *Tree) std.mem.Allocator.Error!void {
 }
 
 pub inline fn isValid(self: *const Tree, handle: Element.Handle) bool {
-    return self.handle_store.isValid(handle);
+    return !handle.isInvalid() and self.handle_store.isValid(handle);
 }
 
 pub fn create(self: *Tree, interface: Element.Interface) Element.RegisterError!Element.Handle {
@@ -94,7 +90,7 @@ pub fn create(self: *Tree, interface: Element.Interface) Element.RegisterError!E
 
     const element: *Element = blk: {
         if (handle.index > self.elements.len) {
-            try self.growBuffers();
+            try self.grow();
         }
         break :blk &self.elements[handle.index];
     };
@@ -116,6 +112,50 @@ pub fn create(self: *Tree, interface: Element.Interface) Element.RegisterError!E
 
 pub fn destroy(self: *Tree, handle: Element.Handle) void {
     if (!self.isValid(handle)) return;
+
+    const element = self.getMut(handle);
+
+    if (!element.parent.isInvalid()) {
+        const parent = self.getMut(element.parent);
+        if (parent.first_child.eql(handle)) {
+            if (element.next_sibling.isInvalid()) {
+                std.debug.assert(parent.last_child.eql(handle));
+
+                parent.first_child = .invalid;
+                parent.last_child = .invalid;
+            } else {
+                std.debug.assert(self.isValid(element.next_sibling));
+
+                parent.first_child = element.next_sibling;
+            }
+        } else if (parent.last_child.eql(handle)) {
+            std.debug.assert(self.isValid(element.prev_sibling));
+
+            parent.last_child = element.prev_sibling;
+        }
+    }
+
+    if (!element.next_sibling.isInvalid()) {
+        const next_sibling = self.getMut(element.next_sibling);
+        std.debug.assert(next_sibling.prev_sibling.eql(handle));
+
+        if (!element.prev_sibling.isInvalid()) {
+            const prev_sibling = self.getMut(element.prev_sibling);
+            std.debug.assert(prev_sibling.next_sibling.eql(handle));
+
+            next_sibling.prev_sibling = element.prev_sibling;
+            prev_sibling.next_sibling = element.next_sibling;
+        } else {
+            next_sibling.prev_sibling = .invalid;
+        }
+    } else if (!element.prev_sibling.isInvalid()) {
+        @branchHint(.unlikely);
+
+        const prev_sibiling = self.getMut(element.prev_sibling);
+        std.debug.assert(prev_sibiling.next_sibling.eql(handle));
+
+        prev_sibiling.next_sibling = .invalid;
+    }
 
     self.layout_data[handle.index] = .zero;
     self.handle_store.destroy(handle);
@@ -143,15 +183,34 @@ pub fn getLayoutDataMut(self: *Tree, handle: Element.Handle) *LayoutData {
 
 pub fn addChildren(self: *Tree, parent_handle: Element.Handle, children: []const Element.Handle) std.mem.Allocator.Error!void {
     std.debug.assert(self.isValid(parent_handle));
-    const element = self.getMut(parent_handle);
 
-    try element.children.ensureUnusedCapacity(self.allocator, children.len);
-    for (children) |child| {
-        if (!self.isValid(child)) continue;
+    const parent = self.getMut(parent_handle);
+    var cur_child_handle = parent.last_child;
 
-        self.getMut(child).parent = parent_handle;
-        element.children.appendAssumeCapacity(child);
+    for (children) |child_handle| {
+        std.debug.assert(self.isValid(child_handle));
+
+        const child = self.getMut(child_handle);
+        child.parent = parent_handle;
+
+        if (cur_child_handle.isInvalid()) {
+            parent.first_child = child_handle;
+        } else {
+            const last_child = self.getMut(parent.last_child);
+            std.debug.assert(last_child.next_sibling.isInvalid());
+
+            last_child.next_sibling = child_handle;
+            child.prev_sibling = parent.last_child;
+        }
+        parent.last_child = child_handle;
+
+        cur_child_handle = child_handle;
     }
+}
+
+/// The childrens should not be changed while iterating over them.
+pub fn childs(self: *const Tree, parent_handle: Element.Handle) ChildIterator {
+    return ChildIterator.init(self, parent_handle);
 }
 
 pub fn markDirty(self: *Tree, handle: Element.Handle) void {
@@ -200,6 +259,40 @@ pub const LayoutData = struct {
         .size = .zero,
     };
 
+    /// relative to parent element
     pos: ScreenVec,
     size: ScreenVec,
+};
+
+pub const ChildIterator = struct {
+    tree: *const Tree,
+    parent_handle: Element.Handle,
+
+    next_child: Element.Handle,
+
+    pub fn init(tree: *const Tree, parent_handle: Element.Handle) ChildIterator {
+        return ChildIterator{
+            .tree = tree,
+            .parent_handle = parent_handle,
+            .next_child = tree.get(parent_handle).first_child,
+        };
+    }
+
+    pub fn peek(self: *const ChildIterator) ?Element.Handle {
+        return if (self.next_child.isInvalid()) return null else self.next_child;
+    }
+
+    pub fn toss(self: *ChildIterator) void {
+        self.next_child = self.tree.get(self.next_child).next_sibling;
+    }
+
+    pub fn count(self: *const ChildIterator) void {
+        var len: usize = 0;
+        var cur_child = self.tree.get(self.parent_handle).first_child;
+        while (!cur_child.isInvalid()) {
+            len += 1;
+            cur_child = self.tree.get(cur_child).next_sibling;
+        }
+        return len;
+    }
 };

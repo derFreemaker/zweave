@@ -124,7 +124,7 @@ pub fn HandleT(comptime ParentT: type, comptime T: type, comptime safety: Handle
         pub const invalid = Self{ .index = std.math.maxInt(T), .generation = if (buildingSafe) 0 else void{} };
 
         pub inline fn isInvalid(self: Self) bool {
-            return self.eql(.invalid);
+            return self.index == invalid.index;
         }
 
         index: T,

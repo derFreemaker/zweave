@@ -20,12 +20,6 @@ pub fn element(self: *Container) Element.Interface {
 }
 
 pub fn getLayoutConstraints(self_ptr: *anyopaque, ctx: *const Element.GetLayoutConstraintsContext) Element.GetLayoutConstraintsError!LayoutConstraints {
-    const trace_zone = tracy.Zone.begin(.{
-        .name = "[Container]: getLayoutConstraints",
-        .src = @src(),
-    });
-    defer trace_zone.end();
-
     _ = self_ptr;
     _ = ctx;
 
@@ -44,27 +38,22 @@ pub fn computeLayout(self_ptr: *anyopaque, ctx: *const Element.CalcLayoutContext
 
     _ = self_ptr;
 
-    const childs = ctx.getElement().children.items;
+    var child_iter = ctx.tree.childs(ctx.handle);
+    var max_row_height: u16 = 0;
+    var pos: ScreenVec = .zero;
+    var budget = ctx.available;
+    while (child_iter.peek()) |child_handle| : (child_iter.toss()) {
+        const child = ctx.tree.get(child_handle);
 
-    var child_constraints = try ctx.allocator.alloc(LayoutConstraints, childs.len);
-    defer ctx.allocator.free(child_constraints);
-    for (childs, 0..) |child_handle, i| {
-        const child_element = ctx.tree.get(child_handle);
-
-        child_constraints[i] = try child_element.interface.getLayoutConstraints(&Element.GetLayoutConstraintsContext{
+        const child_constraint = try child.interface.getLayoutConstraints(&Element.GetLayoutConstraintsContext{
             .allocator = ctx.allocator,
             .tree = ctx.tree,
             .width_method = ctx.width_method,
 
             .handle = child_handle,
         });
-    }
 
-    var max_row_height: u16 = 0;
-    var pos: ScreenVec = .zero;
-    var budget = ctx.available;
-    for (child_constraints, 0..) |child_constraint, i| {
-        const child_data = ctx.tree.getLayoutDataMut(childs[i]);
+        const child_data = ctx.tree.getLayoutDataMut(child_handle);
         child_data.pos = pos;
 
         if (child_constraint.isNull()) {
@@ -106,6 +95,71 @@ pub fn computeLayout(self_ptr: *anyopaque, ctx: *const Element.CalcLayoutContext
         max_row_height = @max(max_row_height, height);
     }
 
+    // var child_iter = ctx.tree.childs(ctx.handle);
+    // var child_constraints = try ctx.allocator.alloc(LayoutConstraints, child_iter.count());
+    // defer ctx.allocator.free(child_constraints);
+    // var child_constraints_i: usize = 0;
+    // while (child_iter.peek()) |child_handle| : ({
+    //     child_constraints_i += 1;
+    //     child_iter.toss();
+    // }) {
+    //     const child_element = ctx.tree.get(child_handle);
+
+    //     child_constraints[child_constraints_i] = try child_element.interface.getLayoutConstraints(&Element.GetLayoutConstraintsContext{
+    //         .allocator = ctx.allocator,
+    //         .tree = ctx.tree,
+    //         .width_method = ctx.width_method,
+
+    //         .handle = child_handle,
+    //     });
+    // }
+
+    // var max_row_height: u16 = 0;
+    // var pos: ScreenVec = .zero;
+    // var budget = ctx.available;
+    // for (child_constraints, 0..) |child_constraint, i| {
+    //     const child_data = ctx.tree.getLayoutDataMut(childs[i]);
+    //     child_data.pos = pos;
+
+    //     if (child_constraint.isNull()) {
+    //         continue;
+    //     }
+
+    //     const width = switch (child_constraint.width) {
+    //         .fixed => |fixed| fixed,
+    //         .percentage => |perc| @as(u16, @intFromFloat(@as(f32, @floatFromInt(ctx.available.x)) * perc)),
+    //     };
+
+    //     if (width > budget.x) {
+    //         pos.y = max_row_height;
+    //         child_data.pos.x = 0;
+    //         child_data.pos.y = max_row_height;
+    //         max_row_height = 0;
+
+    //         budget.x = ctx.available.x - @min(ctx.available.x, width);
+    //         pos.x = width;
+    //     } else {
+    //         budget.x -= width;
+    //         pos.x += width;
+    //     }
+
+    //     child_data.size.x = width;
+
+    //     const height = switch (child_constraint.height) {
+    //         .fixed => |fixed| fixed,
+    //         .percentage => |perc| @as(u16, @intFromFloat(@as(f32, @floatFromInt(ctx.available.y)) * perc)),
+    //     };
+
+    //     if (height > budget.y) {
+    //         budget.y = 0;
+    //     } else {
+    //         budget.y -= height;
+    //     }
+
+    //     child_data.size.y = height;
+    //     max_row_height = @max(max_row_height, height);
+    // }
+
     return ctx.available;
 }
 
@@ -120,8 +174,8 @@ pub fn draw(self_ptr: *anyopaque, ctx: *const Element.DrawContext) Element.DrawE
 
     const view = &ctx.view;
 
-    const childs = ctx.getElement().children.items;
-    for (childs) |child_handle| {
+    var child_iter = ctx.tree.childs(ctx.handle);
+    while (child_iter.peek()) |child_handle| : (child_iter.toss()) {
         const child = ctx.tree.get(child_handle);
         const child_layout_data = ctx.tree.getLayoutData(child_handle);
 

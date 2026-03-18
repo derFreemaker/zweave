@@ -9,16 +9,38 @@ const Block = struct {
     width: f32,
     height: f32,
     content_handle: zweave.StrHandle,
-    style: zweave.SegmentHandle = .invalid,
+    style: zweave.StyleHandle = .invalid,
+
+    input: zweave.Components.TextInput,
+
+    pub fn init(allocator: std.mem.Allocator, width: f32, height: f32, content_handle: zweave.StrHandle, style: zweave.StyleHandle) std.mem.Allocator.Error!Block {
+        var input = try zweave.Components.TextInput.init(allocator);
+        errdefer input.deinit();
+
+        return Block{
+            .width = width,
+            .height = height,
+            .content_handle = content_handle,
+            .style = style,
+
+            .input = input,
+        };
+    }
+
+    pub fn deinit(self: *Block) void {
+        self.input.deinit();
+    }
 
     pub fn element(self: *Block) zweave.Element.Interface {
         return .{ .ptr = self, .vtable = &.{
             .getLayoutConstraints = getLayoutConstraints,
             .draw = draw,
+
+            .onEvent = onEvent,
         } };
     }
 
-    pub fn getLayoutConstraints(self_ptr: *anyopaque, ctx: *const zweave.Element.GetLayoutConstraintsContext) zweave.Element.GetLayoutConstraintsError!zweave.LayoutConstraints {
+    fn getLayoutConstraints(self_ptr: *anyopaque, ctx: *const zweave.Element.GetLayoutConstraintsContext) zweave.Element.GetLayoutConstraintsError!zweave.LayoutConstraints {
         const self: *Block = @ptrCast(@alignCast(self_ptr));
         _ = ctx;
 
@@ -28,17 +50,34 @@ const Block = struct {
         };
     }
 
-    pub fn draw(self_ptr: *anyopaque, ctx: *const zweave.Element.DrawContext) zweave.Element.DrawError!void {
+    fn draw(self_ptr: *anyopaque, ctx: *const zweave.Element.DrawContext) zweave.Element.DrawError!void {
         const self: *Block = @ptrCast(@alignCast(self_ptr));
         const view = &ctx.view;
 
-        view.fill(ctx.screen_store, 0, 0, view.size.y, view.size.x, .{ .long_shared = self.content_handle }, .{
+        try self.input.element().draw(&zweave.Element.DrawContext{
+            .tree = ctx.tree,
+
+            .handle = ctx.handle,
+
+            .view = ctx.view.view(.{
+                .height = ctx.view.size.y,
+                .width = @divFloor(ctx.view.size.x, 2),
+            }),
+            .screen_store = ctx.screen_store,
+        });
+
+        view.fill(ctx.screen_store, 0, @divFloor(view.size.x, 2), view.size.y, @divFloor(view.size.x, 2), .{ .long_shared = self.content_handle }, .{
             .style = self.style,
         });
 
         _ = try view.write(10, 1, " hi Block here! ", .{
             .style = self.style,
         });
+    }
+
+    fn onEvent(self_ptr: *anyopaque, ctx: *const zweave.Element.EventContext) zweave.Element.EventError!void {
+        const self: *Block = @ptrCast(@alignCast(self_ptr));
+        try self.input.element().onEvent(ctx);
     }
 };
 
@@ -89,14 +128,11 @@ pub fn main() !u8 {
     });
     defer engine.screen_store.removeStyle(style2_handle);
 
-    var block2 = Block{
-        .width = 0.5,
-        .height = 0.67,
-        .content_handle = str2_handle,
-        .style = style2_handle,
-    };
-    const block2_handle = try engine.tree.create(block2.element());
-    defer engine.tree.destroy(block2_handle);
+    var block = try Block.init(allocator, 0.5, 0.67, str2_handle, style2_handle);
+    defer block.deinit();
+    const block_handle = try engine.tree.create(block.element());
+    defer engine.tree.destroy(block_handle);
+    try engine.tree.setFocus(block_handle);
 
     var screen = try zweave.Components.Screen.init(allocator, .{
         .size = .{ .x = 60, .y = 30 },
@@ -113,7 +149,7 @@ pub fn main() !u8 {
     const input_handle = try engine.tree.create(input.element());
     defer engine.tree.destroy(input_handle);
 
-    try engine.tree.addChildren(engine.root, &.{ screen_handle, block2_handle, input_handle });
+    try engine.tree.addChildren(engine.root, &.{ screen_handle, block_handle, input_handle });
 
     while (true) {
         var event = engine.tty.nextEvent();
@@ -138,7 +174,7 @@ pub fn main() !u8 {
                 } else if (key_press.matches(.f2, .{})) {
                     consumed = true;
                     if (engine.tree.isFocused(input_handle)) {
-                        engine.tree.removeFocus();
+                        try engine.tree.setFocus(block_handle);
                     } else {
                         try engine.tree.setFocus(input_handle);
                     }

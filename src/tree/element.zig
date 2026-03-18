@@ -17,6 +17,8 @@ const Element = @This();
 
 pub const Interface = struct {
     pub const VTable = struct {
+        register: ?*const fn (self_ptr: *anyopaque, ctx: *const RegisterContext) RegisterError!void = null,
+
         getLayoutConstraints: *const fn (self_ptr: *anyopaque, ctx: *const GetLayoutConstraintsContext) GetLayoutConstraintsError!LayoutConstraints,
         computeLayout: ?*const fn (self_ptr: *anyopaque, ctx: *const CalcLayoutContext) CalcLayoutError!ScreenVec = null,
         draw: *const fn (self_ptr: *anyopaque, ctx: *const DrawContext) DrawError!void,
@@ -26,6 +28,14 @@ pub const Interface = struct {
 
     ptr: *anyopaque,
     vtable: *const VTable,
+
+    pub inline fn hasRegister(self: Interface) bool {
+        return self.vtable.register != null;
+    }
+
+    pub inline fn register(self: Interface, ctx: *const RegisterContext) RegisterError!void {
+        return self.vtable.register.?(self.ptr, ctx);
+    }
 
     pub inline fn getLayoutConstraints(self: Interface, ctx: *const GetLayoutConstraintsContext) GetLayoutConstraintsError!LayoutConstraints {
         return self.vtable.getLayoutConstraints(self.ptr, ctx);
@@ -61,6 +71,23 @@ children: std.ArrayList(Handle) = .empty,
 
 isDirty: bool = true,
 childIsDirty: bool = false,
+
+pub const RegisterError = std.mem.Allocator.Error;
+
+pub const RegisterContext = struct {
+    const Context = @This();
+
+    tree: *Tree,
+    handle: Element.Handle,
+
+    pub inline fn getElement(self: *const Context) *const Element {
+        return self.tree.get(self.handle);
+    }
+
+    pub inline fn getElementMut(self: *const Context) *Element {
+        return self.tree.getMut(self.handle);
+    }
+};
 
 pub const GetLayoutConstraintsError = std.mem.Allocator.Error;
 
@@ -146,6 +173,10 @@ pub const EventContext = struct {
 
     pub inline fn getElement(self: *const Context) *const Element {
         return self.tree.get(self.handle);
+    }
+
+    pub inline fn getElementMut(self: *const Context) *Element {
+        return self.tree.getMut(self.handle);
     }
 
     pub inline fn isFocused(self: *const Context) bool {

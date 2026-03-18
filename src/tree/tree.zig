@@ -88,7 +88,7 @@ pub inline fn isValid(self: *const Tree, handle: Element.Handle) bool {
     return self.handle_store.isValid(handle);
 }
 
-pub fn create(self: *Tree, interface: Element.Interface) std.mem.Allocator.Error!Element.Handle {
+pub fn create(self: *Tree, interface: Element.Interface) Element.RegisterError!Element.Handle {
     const handle = try self.handle_store.create(self.allocator);
     errdefer self.handle_store.destroy(handle);
 
@@ -102,6 +102,14 @@ pub fn create(self: *Tree, interface: Element.Interface) std.mem.Allocator.Error
     element.* = Element{
         .interface = interface,
     };
+
+    if (interface.hasRegister()) {
+        try interface.register(&Element.RegisterContext{
+            .tree = self,
+
+            .handle = handle,
+        });
+    }
 
     return handle;
 }
@@ -151,13 +159,13 @@ pub fn markDirty(self: *Tree, handle: Element.Handle) void {
 
     const element = self.getMut(handle);
     element.isDirty = true;
-    if (element.parent == .invalid) {
+    if (element.parent.eql(.invalid)) {
         return;
     }
 
     var cur_parent_element_handle: Element.Handle = element.parent;
-    while (cur_parent_element_handle != .invalid) |parent_element_handle| {
-        const parent_element = self.getMut(parent_element_handle);
+    while (!cur_parent_element_handle.isInvalid()) {
+        const parent_element = self.getMut(cur_parent_element_handle);
         if (parent_element.childIsDirty) break;
 
         parent_element.childIsDirty = true;

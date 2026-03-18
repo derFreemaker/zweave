@@ -47,13 +47,10 @@ pub fn deinit(self: *Screen, allocator: std.mem.Allocator) void {
 }
 
 pub fn element(self: *Screen) Element.Interface {
-    return Element.Interface{
-        .ptr = self,
-        .vtable = &Element.Interface.VTable{
-            .getLayoutConstraints = getLayoutConstraints,
-            .draw = draw,
-        },
-    };
+    return Element.Interface{ .ptr = self, .vtable = &Element.Interface.VTable{
+        .getLayoutConstraints = getLayoutConstraints,
+        .draw = draw,
+    } };
 }
 
 pub fn getLayoutConstraints(self_ptr: *anyopaque, ctx: *const Element.GetLayoutConstraintsContext) Element.GetLayoutConstraintsError!LayoutConstraints {

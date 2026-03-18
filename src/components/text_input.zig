@@ -23,15 +23,12 @@ pub fn deinit(self: *TextInput) void {
 }
 
 pub fn element(self: *TextInput) Element.Interface {
-    return Element.Interface{
-        .ptr = self,
-        .vtable = &Element.Interface.VTable{
-            .getLayoutConstraints = getLayoutConstraints,
-            .draw = draw,
+    return Element.Interface{ .ptr = self, .vtable = &Element.Interface.VTable{
+        .getLayoutConstraints = getLayoutConstraints,
+        .draw = draw,
 
-            .onEvent = onEvent,
-        },
-    };
+        .onEvent = onEvent,
+    } };
 }
 
 pub fn getLayoutConstraints(self_ptr: *anyopaque, ctx: *const Element.GetLayoutConstraintsContext) Element.GetLayoutConstraintsError!LayoutConstraints {

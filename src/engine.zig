@@ -31,6 +31,8 @@ root: Element.Handle,
 show_stats: bool,
 stats_style: ScreenStore.StyleHandle,
 
+last_frame_time: i64,
+
 pub const InitError = error{UnableToInitTty} || std.mem.Allocator.Error;
 
 pub fn init_(self: *Engine, allocator: std.mem.Allocator, event_allocator: std.mem.Allocator) InitError!void {
@@ -66,6 +68,8 @@ pub fn init_(self: *Engine, allocator: std.mem.Allocator, event_allocator: std.m
         .attrs = .{ .reverse = true },
     });
     errdefer self.screen_store.removeStyle(self.stats_style);
+
+    self.last_frame_time = 0;
 }
 
 pub fn deinit(self: *Engine) void {
@@ -129,6 +133,8 @@ pub fn renderNextFrame(self: *Engine) RenderError!void {
         .src = @src(),
     });
     defer trace_zone.end();
+
+    const start = std.time.microTimestamp();
 
     _ = self.arena.reset(.{ .retain_with_limit = 8 * 1024 * 1024 });
     var trace_allocator = tracy.Allocator{
@@ -220,6 +226,8 @@ pub fn renderNextFrame(self: *Engine) RenderError!void {
             writer.writeByte('\n') catch return error.UnableToRender;
         }
 
+        _ = writer.print("Last Frame Time: {d}µs\n", .{self.last_frame_time}) catch return error.UnableToRender;
+
         writer.flush() catch return error.UnableToRender;
     }
 
@@ -234,4 +242,7 @@ pub fn renderNextFrame(self: *Engine) RenderError!void {
 
         self.tty.flush() catch return error.UnableToRender;
     }
+
+    const end = std.time.microTimestamp();
+    self.last_frame_time = end - start;
 }

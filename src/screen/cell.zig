@@ -18,29 +18,6 @@ comptime {
     std.debug.assert(@sizeOf(Cell) == 8);
 }
 
-// pub fn eql(self: Cell, other: Cell) bool {
-//     if (!self.style.eql(other.style)) return false;
-//     if (!self.block.eql(other.block)) return false;
-//     if (std.meta.activeTag(self.content) != std.meta.activeTag(other.content)) return false;
-//     switch (self.content) {
-//         .char => |c| {
-//             return c == other.content.char;
-//         },
-//         .short => |s| {
-//             const self_content = s[0 .. std.mem.indexOf(u8, &s, &.{0}) orelse 8];
-//             const other_content = other.content.short[0 .. std.mem.indexOf(u8, &other.content.short, &.{0}) orelse 8];
-//             return std.mem.eql(self_content, other_content);
-//         },
-//         .long_local => {
-//             @panic("unimplemented");
-//         },
-//         .long_shared => {
-//             @panic("unimplemented");
-//         },
-//         .wide_continuation => return true,
-//     }
-// }
-
 pub const shortStringMaxLength = 3;
 
 pub const Content = union(enum) {

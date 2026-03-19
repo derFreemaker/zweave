@@ -103,8 +103,8 @@ pub fn clear(self: *Screen) void {
     self.cursor_visible = false;
 }
 
-pub inline fn len(self: *const Screen) usize {
-    return @as(usize, self.winsize.cols) * @as(usize, self.winsize.rows);
+pub inline fn len(self: *const Screen) u32 {
+    return @as(u32, self.winsize.cols) * @as(u32, self.winsize.rows);
 }
 
 pub inline fn strWidth(self: *const Screen, str: []const u8) usize {
@@ -161,3 +161,106 @@ pub fn view(self: *Screen, opts: View.Options) View {
         .overflow = opts.overflow,
     };
 }
+
+pub fn diff(self: *const Screen, other: *const Screen, out: *Screen) std.mem.Allocator.Error!void {
+    std.debug.assert(self.len() == other.len());
+    std.debug.assert(self.len() == out.len());
+    std.debug.assert(self.width_method == other.width_method);
+
+    const iter = ScreenDiffIterator.init(self, other);
+    while (iter.next()) |cell_diff| {
+        const cell = &out.buf[cell_diff.idx.value()];
+        cell.* = cell_diff.cell.*;
+
+        switch (cell_diff.cell.content) {
+            .long_local => |long_idx| {
+                cell.content.long_local = try out.addStr(other.getStr(long_idx));
+            },
+            else => {},
+        }
+    }
+
+    out.width_method = other.width_method;
+
+    out.cursor_pos = other.cursor_pos;
+    out.cursor_shape = other.cursor_shape;
+    out.cursor_visible = other.cursor_visible;
+}
+
+pub const ScreenDiffIterator = struct {
+    first: *const Screen,
+    second: *const Screen,
+
+    idx: Cell.Index,
+    end: Cell.Index,
+
+    pub fn init(first: *const Screen, second: *const Screen) ScreenDiffIterator {
+        std.debug.assert(first.len() == second.len());
+
+        return ScreenDiffIterator{
+            .first = first,
+            .second = second,
+
+            .idx = 0,
+            .end = .from(first.len()),
+        };
+    }
+
+    pub fn next(self: *ScreenDiffIterator) ?CellDiff {
+        while (self.idx < self.end) {
+            defer self.idx = self.idx.increment(1);
+
+            const first = &self.first.buf[self.idx];
+            const second = &self.second.buf[self.idx];
+
+            if (!first.style.eql(second.style) or
+                !first.segment.eql(second.segment) or
+                std.meta.activeTag(first) != std.meta.activeTag(second))
+            {
+                return CellDiff{
+                    .idx = self.idx,
+                    .cell = second,
+                };
+            }
+
+            switch (first.content) {
+                .empty => {},
+                .char => {
+                    if (first.content.char != second.content.char) {
+                        return CellDiff{
+                            .idx = self.idx,
+                            .cell = second,
+                        };
+                    }
+                },
+                .short => {
+                    const first_content = first.content.short[0 .. std.mem.indexOf(u8, &first.content.short, &.{0}) orelse 8];
+                    const second_content = second.content.short[0 .. std.mem.indexOf(u8, &second.content.short, &.{0}) orelse 8];
+                    return std.mem.eql(first_content, second_content);
+                },
+                .long_local => {
+                    return CellDiff{
+                        .idx = self.idx,
+                        .cell = second,
+                    };
+                },
+                .long_shared => {
+                    if (!first.content.long_shared.eql(second.content.long_shared)) {
+                        return CellDiff{
+                            .idx = self.idx,
+                            .cell = second,
+                        };
+                    }
+                },
+                .wide_continuation => {},
+            }
+        }
+
+        return null;
+    }
+
+    pub const CellDiff = struct {
+        idx: Cell.Index,
+        cell: *const Cell,
+    };
+};

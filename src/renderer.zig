@@ -2,6 +2,7 @@ const std = @import("std");
 const tracy = @import("tracy");
 const zttio = @import("zttio");
 
+const ScreenVec = @import("common/screen_vec.zig");
 const Screen = @import("screen/screen.zig");
 const ScreenStore = @import("screen/screen_store.zig");
 const Tree = @import("tree/tree.zig");
@@ -10,8 +11,10 @@ const Style = @import("screen/styling.zig").Style;
 
 const Renderer = @This();
 
-prev: *Screen,
 next: *Screen,
+prev: *Screen,
+
+diff: *Screen,
 
 pub fn init(allocator: std.mem.Allocator, winsize: zttio.Winsize, unicode_width_method: zttio.gwidth.Method) std.mem.Allocator.Error!Renderer {
     var first_screen = try allocator.create(Screen);
@@ -22,13 +25,22 @@ pub fn init(allocator: std.mem.Allocator, winsize: zttio.Winsize, unicode_width_
     second_screen.* = try Screen.init(allocator, winsize, unicode_width_method);
     errdefer second_screen.deinit(allocator);
 
+    var diff_screen = try allocator.create(Screen);
+    diff_screen.* = try Screen.init(allocator, winsize, unicode_width_method);
+    errdefer diff_screen.deinit(allocator);
+
     return Renderer{
-        .prev = first_screen,
         .next = second_screen,
+        .prev = first_screen,
+
+        .diff = diff_screen,
     };
 }
 
 pub fn deinit(self: *Renderer, allocator: std.mem.Allocator) void {
+    self.diff.deinit();
+    allocator.destroy(self.diff);
+
     self.prev.deinit();
     allocator.destroy(self.prev);
 
@@ -49,9 +61,12 @@ pub fn resize(self: *Renderer, new_winsize: zttio.Winsize) std.mem.Allocator.Err
 
     try self.next.resize(new_winsize);
     try self.prev.resize(new_winsize);
+    try self.diff.resize(new_winsize);
 }
 
-pub fn render(self: *Renderer, screen_store: *const ScreenStore, tty: *zttio.Tty) error{UnableToRender}!void {
+pub const RenderError = std.mem.Allocator.Error || std.Io.Writer.Error;
+
+pub fn render(self: *Renderer, screen_store: *const ScreenStore, tty: *zttio.Tty) RenderError!void {
     const trace_zone = tracy.Zone.begin(.{
         .name = "[Renderer]: render",
         .src = @src(),
@@ -61,12 +76,49 @@ pub fn render(self: *Renderer, screen_store: *const ScreenStore, tty: *zttio.Tty
     tty.startSync() catch {};
 
     const next = self.next;
-    renderDirect(next, screen_store, tty) catch return error.UnableToRender;
+    // renderDirect(next, screen_store, tty) catch return error.UnableToRender;
+    try self.renderDiff(screen_store, tty);
 
     tty.endSync() catch {};
 
     self.next = self.prev;
     self.prev = next;
+}
+
+fn renderDiff(self: *Renderer, store: *const Screen, tty: *zttio.Tty) RenderError!void {
+    try tty.clearScreen(.entire);
+    try tty.hideCursor();
+    try tty.moveCursor(.home);
+    try tty.stdout.writeAll(zttio.Styling.reset);
+
+    const screen = self.diff;
+    screen.clear();
+
+    try self.next.diff(self.prev, self.diff);
+
+    var next_wrap = screen.winsize.cols;
+    var current_style_handle: ScreenStore.StyleHandle = .invalid;
+    var current_segment_handle: ScreenStore.SegmentHandle = .invalid;
+    var current_segment: *const Segment = undefined;
+    var i: usize = 0;
+    var jumped_cells: usize = 0;
+    while (i < screen.len()) {
+        const cell = screen.buf[i];
+        if (i >= next_wrap) {
+            try tty.stdout.writeByte('\n');
+            next_wrap += screen.winsize.cols;
+            jumped_cells = 0;
+        }
+    }
+
+    if (screen.cursor_visible) {
+        try tty.setCursorShape(screen.cursor_shape);
+        try tty.moveCursor(.{ .pos = .{
+            .row = screen.cursor_pos.x + 1,
+            .column = screen.cursor_pos.y + 1,
+        } });
+        try tty.showCursor();
+    }
 }
 
 fn renderDirect(screen: *const Screen, store: *const ScreenStore, tty: *zttio.Tty) std.Io.Writer.Error!void {

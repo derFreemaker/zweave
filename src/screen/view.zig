@@ -55,38 +55,26 @@ pub fn writeCell(self: *const View, store: ?*const ScreenStore, row: u16, col: u
     }
 
     const screen = self.screen;
-
     std.debug.assert(self.pos.y + row < screen.winsize.rows);
     std.debug.assert(self.pos.x + col < screen.winsize.cols);
 
-    if (opts.max_width == 0) return 0;
-
     const width: u16 = content.calcWidth(screen, store);
     std.debug.assert(self.pos.x + col + width <= screen.winsize.cols);
-    if (opts.max_width) |max_width| {
-        if (width > max_width) {
-            self.fill(null, row, col, 1, max_width, .{ .char = ' ' }, .{
-                .style = opts.style,
-                .segment = opts.segment,
-            });
-
-            return max_width;
-        }
-    }
 
     const cell_index = self.getCellIndex(row, col);
     screen.buf[cell_index.value()] = .{
         .content = content,
+
         .style = if (opts.style.isInvalid()) self.default_style else opts.style,
         .segment = opts.segment,
     };
 
-    if (width > 1) {
-        self.fill(null, row, col + 1, 1, width - 1, .wide_continuation, .{
-            .style = opts.style,
-            .segment = opts.segment,
-        });
-    }
+    @memset(screen.buf[cell_index.value() + 1 .. cell_index.value() + width], Cell{
+        .content = .wide_continuation,
+
+        .style = opts.style,
+        .segment = opts.segment,
+    });
 
     return width;
 }
@@ -108,7 +96,6 @@ pub fn fill(self: *const View, store: ?*const ScreenStore, row: u16, col: u16, h
     }
 
     const screen = self.screen;
-
     std.debug.assert(self.pos.y + row < screen.winsize.rows);
     std.debug.assert(self.pos.y + row + height - 1 < screen.winsize.rows);
     std.debug.assert(self.pos.x + col < screen.winsize.cols);
@@ -116,7 +103,6 @@ pub fn fill(self: *const View, store: ?*const ScreenStore, row: u16, col: u16, h
 
     const safe_height = @min(self.size.y - row, height);
     const safe_width = @min(self.size.x - col, width);
-
     if (safe_height == 0 or safe_width == 0) {
         return;
     }
@@ -150,14 +136,12 @@ pub fn fill(self: *const View, store: ?*const ScreenStore, row: u16, col: u16, h
         .style = opts.style,
         .segment = opts.segment,
     };
-    if (cells > 1) {
-        @memset(fill_view[1..], Cell{
-            .content = .wide_continuation,
+    @memset(fill_view[1..], Cell{
+        .content = .wide_continuation,
 
-            .style = opts.style,
-            .segment = opts.segment,
-        });
-    }
+        .style = opts.style,
+        .segment = opts.segment,
+    });
 
     for (0..safe_height) |h| {
         const row_idx = self.getCellIndex(@intCast(row + h), col);
@@ -414,8 +398,6 @@ pub const FillOptions = struct {
 };
 
 pub const WriteCellOptions = struct {
-    max_width: ?u16 = null,
-
     style: ScreenStore.StyleHandle = .invalid,
     segment: ScreenStore.SegmentHandle = .invalid,
 };

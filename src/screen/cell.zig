@@ -10,7 +10,7 @@ pub const Index = IndexT(Cell, u32);
 
 const Cell = @This();
 
-content: Content = .{ .char = ' ' },
+content: Content = .empty,
 style: ScreenStore.StyleHandle = .invalid,
 segment: ScreenStore.SegmentHandle = .invalid,
 
@@ -44,6 +44,7 @@ comptime {
 pub const shortStringMaxLength = 3;
 
 pub const Content = union(enum) {
+    empty,
     char: u8,
     /// null terminated if not fully used
     short: [shortStringMaxLength]u8,
@@ -54,6 +55,7 @@ pub const Content = union(enum) {
     /// 'store' only needs to be provided if a 'long_shared' content is given.
     pub inline fn calcWidth(self: Content, screen: *const Screen, store: ?*const ScreenStore) u16 {
         return @intCast(blk: switch (self) {
+            .empty => break :blk 0,
             .char => break :blk 1,
             .short => |short| break :blk screen.strWidth(&short),
             .long_local => |index| break :blk screen.strWidth(screen.strs.items[index.value()]),

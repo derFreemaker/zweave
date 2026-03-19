@@ -121,31 +121,61 @@ pub fn fill(self: *const View, store: ?*const ScreenStore, row: u16, col: u16, h
         return;
     }
 
-    switch (content) {
-        .wide_continuation, .char => {
-            for (0..safe_height) |h| {
-                const start_idx = self.getCellIndex(@intCast(row + h), col);
-                const end_idx = self.getCellIndex(@intCast(row + h), col + safe_width - 1);
-                @memset(screen.buf[start_idx.value() .. end_idx.value() + 1], Cell{
-                    .content = content,
-                    .style = opts.style,
-                    .segment = opts.segment,
-                });
-            }
-        },
-        else => {
-            for (0..safe_height) |h| {
-                var w: u16 = 0;
-                while (w < safe_width) {
-                    w += self.writeCell(store, row + @as(u16, @intCast(h)), col + w, content, .{
-                        .max_width = safe_width - w,
+    const cells = @max(content.calcWidth(screen, store), 1);
 
-                        .style = opts.style,
-                        .segment = opts.segment,
-                    });
-                }
-            }
-        },
+    if (cells == 1) {
+        for (0..safe_height) |h| {
+            const start_idx = self.getCellIndex(@intCast(row + h), col);
+            const end_idx = start_idx.increment(safe_width);
+            @memset(screen.buf[start_idx.value()..end_idx.value()], Cell{
+                .content = content,
+
+                .style = opts.style,
+                .segment = opts.segment,
+            });
+        }
+
+        return;
+    }
+
+    const amount = std.math.divFloor(u16, safe_width, cells) catch unreachable;
+    const remainder = std.math.mod(u16, safe_width, cells) catch unreachable;
+
+    std.debug.assert(cells <= 16);
+    var fill_buf: [16]Cell = undefined;
+    const fill_view: []Cell = fill_buf[0..cells];
+    fill_buf[0] = Cell{
+        .content = content,
+
+        .style = opts.style,
+        .segment = opts.segment,
+    };
+    if (cells > 1) {
+        @memset(fill_view[1..], Cell{
+            .content = .wide_continuation,
+
+            .style = opts.style,
+            .segment = opts.segment,
+        });
+    }
+
+    for (0..safe_height) |h| {
+        const row_idx = self.getCellIndex(@intCast(row + h), col);
+        var current_col_idx = row_idx;
+        for (0..amount) |_| {
+            const end_idx = current_col_idx.increment(cells);
+            @memcpy(screen.buf[current_col_idx.value()..end_idx.value()], fill_view);
+
+            current_col_idx = current_col_idx.increment(cells);
+        }
+
+        const end_idx = current_col_idx.increment(remainder);
+        @memset(screen.buf[current_col_idx.value()..end_idx.value()], Cell{
+            .content = .{ .char = ' ' },
+
+            .style = opts.style,
+            .segment = opts.segment,
+        });
     }
 }
 

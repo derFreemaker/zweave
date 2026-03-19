@@ -116,6 +116,9 @@ fn renderDirect(screen: *const Screen, store: *const ScreenStore, tty: *zttio.Tt
         }
 
         switch (cell.content) {
+            .empty => {
+                try tty.stdout.writeByte(' ');
+            },
             .char => |c| {
                 try tty.stdout.writeByte(c);
             },

@@ -62,8 +62,8 @@ pub fn init_(self: *Engine, allocator: std.mem.Allocator, event_allocator: std.m
 
     self.show_stats = false;
     self.stats_style = try self.screen_store.addStyle(Style{
-        .background = .{ .c8 = .black },
-        .foreground = .{ .c8 = .green },
+        .inherit = true,
+        .attrs = .{ .reverse = true },
     });
     errdefer self.screen_store.removeStyle(self.stats_style);
 }
@@ -178,6 +178,12 @@ pub fn renderNextFrame(self: *Engine) RenderError!void {
     });
 
     if (self.show_stats) {
+        const stats_trace_zone = tracy.Zone.begin(.{
+            .name = "[Engine]: stats write",
+            .src = @src(),
+        });
+        defer stats_trace_zone.end();
+
         var stats_writer = stats_view.writer(&.{});
         const writer = &stats_writer.writer;
 
@@ -219,5 +225,13 @@ pub fn renderNextFrame(self: *Engine) RenderError!void {
 
     try self.renderer.render(&self.screen_store, self.tty);
 
-    self.tty.flush() catch return error.UnableToRender;
+    {
+        const flush_trace_zone = tracy.Zone.begin(.{
+            .name = "[Engine]: flush to terminal",
+            .src = @src(),
+        });
+        defer flush_trace_zone.end();
+
+        self.tty.flush() catch return error.UnableToRender;
+    }
 }

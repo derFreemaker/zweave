@@ -10,6 +10,11 @@ const ScreenStore = @import("screen_store.zig");
 
 pub const View = @This();
 
+pub const Overflow = enum(u1) {
+    no_overflow,
+    allow_overflow,
+};
+
 screen: *Screen,
 
 pos: ScreenVec,
@@ -37,6 +42,11 @@ pub fn getCellIndex(self: *const View, row: u16, col: u16) Cell.Index {
 
     return self.screen.getCellIndex(self.pos.y + row, self.pos.x + col);
 }
+
+pub const WriteCellOptions = struct {
+    style: ScreenStore.StyleHandle = .invalid,
+    segment: ScreenStore.SegmentHandle = .invalid,
+};
 
 /// asserts that you are writing inside the view if `.no_overflow`
 /// 'store' only needs to be provided if a 'long_shared' content is given.
@@ -79,6 +89,11 @@ pub fn writeCell(self: *const View, store: ?*const ScreenStore, row: u16, col: u
     return width;
 }
 
+pub const FillOptions = struct {
+    style: ScreenStore.StyleHandle = .invalid,
+    segment: ScreenStore.SegmentHandle = .invalid,
+};
+
 /// asserts that you are writing inside the view if `.no_overflow`
 /// 'store' only needs to be provided if a 'long_shared' content is given.
 pub fn fill(self: *const View, store: ?*const ScreenStore, row: u16, col: u16, height: u16, width: u16, content: Cell.Content, opts: FillOptions) void {
@@ -93,22 +108,20 @@ pub fn fill(self: *const View, store: ?*const ScreenStore, row: u16, col: u16, h
         std.debug.assert(col + height - 1 < self.size.y);
         std.debug.assert(col < self.size.x);
         std.debug.assert(col + width - 1 < self.size.x);
-    }
-
-    const screen = self.screen;
-    std.debug.assert(self.pos.y + row < screen.winsize.rows);
-    std.debug.assert(self.pos.y + row + height - 1 < screen.winsize.rows);
-    std.debug.assert(self.pos.x + col < screen.winsize.cols);
-    std.debug.assert(self.pos.x + col + width - 1 < screen.winsize.cols);
-
-    const safe_height = @min(self.size.y - row, height);
-    const safe_width = @min(self.size.x - col, width);
-    if (safe_height == 0 or safe_width == 0) {
+    } else if (row >= self.size.y or col >= self.size.x) {
         return;
     }
 
-    const cells = @max(content.calcWidth(screen, store), 1);
+    const safe_height = @min(self.size.y - row, height);
+    const safe_width = @min(self.size.x - col, width);
 
+    const screen = self.screen;
+    std.debug.assert(self.pos.y + row < screen.winsize.rows);
+    std.debug.assert(self.pos.y + row + safe_height - 1 < screen.winsize.rows);
+    std.debug.assert(self.pos.x + col < screen.winsize.cols);
+    std.debug.assert(self.pos.x + col + safe_width - 1 < screen.winsize.cols);
+
+    const cells = @max(content.calcWidth(screen, store), 1);
     if (cells == 1) {
         for (0..safe_height) |h| {
             const start_idx = self.getCellIndex(@intCast(row + h), col);
@@ -162,6 +175,14 @@ pub fn fill(self: *const View, store: ?*const ScreenStore, row: u16, col: u16, h
         });
     }
 }
+
+pub const WriteOptions = struct {
+    max_width: ?u16 = null,
+    max_height: ?u16 = null,
+
+    style: ScreenStore.StyleHandle = .invalid,
+    segment: ScreenStore.SegmentHandle = .invalid,
+};
 
 /// asserts that you are writing inside the view if `.no_overflow`
 pub fn write(self: *const View, row: u16, col: u16, content: []const u8, opts: WriteOptions) std.mem.Allocator.Error!ScreenVec {
@@ -322,6 +343,16 @@ pub fn writer(self: *const View, buffer: []u8) ViewWriter {
     return ViewWriter.init(self, buffer);
 }
 
+pub const Options = struct {
+    col: u16 = 0,
+    row: u16 = 0,
+    width: ?u16 = null,
+    height: ?u16 = null,
+
+    default_style: ScreenStore.StyleHandle = .invalid,
+    overflow: Overflow = .allow_overflow,
+};
+
 /// asserts that you are slicing inside the view if `.no_overflow`
 pub fn view(self: *const View, opts: Options) View {
     var w = opts.width orelse self.size.x - opts.col;
@@ -376,39 +407,6 @@ pub inline fn setCursorShape(self: *const View, shape: Screen.CursorShape) void 
 pub inline fn setCursorVisibility(self: *const View, visible: bool) void {
     self.screen.cursor_visible = visible;
 }
-
-pub const Options = struct {
-    col: u16 = 0,
-    row: u16 = 0,
-    width: ?u16 = null,
-    height: ?u16 = null,
-
-    default_style: ScreenStore.StyleHandle = .invalid,
-    overflow: Overflow = .allow_overflow,
-};
-
-pub const Overflow = enum(u1) {
-    no_overflow,
-    allow_overflow,
-};
-
-pub const FillOptions = struct {
-    style: ScreenStore.StyleHandle = .invalid,
-    segment: ScreenStore.SegmentHandle = .invalid,
-};
-
-pub const WriteCellOptions = struct {
-    style: ScreenStore.StyleHandle = .invalid,
-    segment: ScreenStore.SegmentHandle = .invalid,
-};
-
-pub const WriteOptions = struct {
-    max_width: ?u16 = null,
-    max_height: ?u16 = null,
-
-    style: ScreenStore.StyleHandle = .invalid,
-    segment: ScreenStore.SegmentHandle = .invalid,
-};
 
 pub const ViewWriter = struct {
     view: View,

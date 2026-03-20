@@ -123,11 +123,7 @@ fn computeLayout(self: *Engine, allocator: std.mem.Allocator, screen: *Screen, r
     return needed_space;
 }
 
-pub const RenderError = error{
-    UnableToRender,
-} || std.mem.Allocator.Error;
-
-pub fn renderNextFrame(self: *Engine) RenderError!void {
+pub fn renderNextFrame(self: *Engine) Renderer.RenderError!void {
     const trace_zone = tracy.Zone.begin(.{
         .name = "[Engine]: renderNextFrame",
         .src = @src(),
@@ -143,8 +139,7 @@ pub fn renderNextFrame(self: *Engine) RenderError!void {
     };
     const allocator = trace_allocator.allocator();
 
-    var screen = self.renderer.getScreen();
-    screen.clear();
+    var screen = self.renderer.prepareNextFrameScreen();
 
     const root = self.tree.get(self.root);
     const needed_space = try self.computeLayout(allocator, screen, root);
@@ -163,17 +158,14 @@ pub fn renderNextFrame(self: *Engine) RenderError!void {
             .height = needed_space.y,
         });
 
-        root.interface.draw(&Element.DrawContext{
+        try root.interface.draw(&Element.DrawContext{
             .tree = &self.tree,
 
             .handle = self.root,
 
             .view = root_view,
             .screen_store = &self.screen_store,
-        }) catch |err| switch (err) {
-            error.WriteFailed => return error.UnableToRender,
-            error.OutOfMemory => return error.OutOfMemory,
-        };
+        });
     }
 
     const stats_view = screen.view(.{
@@ -193,42 +185,42 @@ pub fn renderNextFrame(self: *Engine) RenderError!void {
         var stats_writer = stats_view.writer(&.{});
         const writer = &stats_writer.writer;
 
-        writer.print("Winsize: c-{d}x{d}-{d} p-{d}x{d} \n", .{
+        try writer.print("Winsize: c-{d}x{d}-{d} p-{d}x{d} \n", .{
             screen.winsize.cols,
             screen.winsize.rows,
             screen.buf.len,
             screen.winsize.x_pixel,
             screen.winsize.y_pixel,
-        }) catch return error.UnableToRender;
+        });
 
         {
-            _ = writer.write("Memory Usage: ") catch return error.UnableToRender;
+            _ = try writer.write("Memory Usage: ");
 
-            _ = writer.write("Tree-") catch return error.UnableToRender;
-            self.tree_allocator.prettyPrintBytesUsed(writer) catch return error.UnableToRender;
-            writer.writeByte(' ') catch return error.UnableToRender;
+            _ = try writer.write("Tree-");
+            try self.tree_allocator.prettyPrintBytesUsed(writer);
+            try writer.writeByte(' ');
 
-            _ = writer.write("Render-") catch return error.UnableToRender;
-            self.render_allocator.prettyPrintBytesUsed(writer) catch return error.UnableToRender;
-            writer.writeByte(' ') catch return error.UnableToRender;
+            _ = try writer.write("Render-");
+            try self.render_allocator.prettyPrintBytesUsed(writer);
+            try writer.writeByte(' ');
 
-            writer.writeByte('\n') catch return error.UnableToRender;
+            try writer.writeByte('\n');
         }
 
         {
-            _ = writer.write("Memory Capacity: ") catch return error.UnableToRender;
+            _ = try writer.write("Memory Capacity: ");
 
-            writer.print("DrawLoop-{d:.1}kB", .{
+            try writer.print("DrawLoop-{d:.1}kB", .{
                 @as(f64, @floatFromInt(self.arena.queryCapacity())) / 1024,
-            }) catch return error.UnableToRender;
-            writer.writeByte(' ') catch return error.UnableToRender;
+            });
+            try writer.writeByte(' ');
 
-            writer.writeByte('\n') catch return error.UnableToRender;
+            try writer.writeByte('\n');
         }
 
-        _ = writer.print("Last Frame Time: {d}µs\n", .{self.last_frame_time}) catch return error.UnableToRender;
+        _ = try writer.print("Last Frame Time: {d}µs\n", .{self.last_frame_time});
 
-        writer.flush() catch return error.UnableToRender;
+        try writer.flush();
     }
 
     try self.renderer.render(&self.screen_store, self.tty);
@@ -240,7 +232,7 @@ pub fn renderNextFrame(self: *Engine) RenderError!void {
         });
         defer flush_trace_zone.end();
 
-        self.tty.flush() catch return error.UnableToRender;
+        try self.tty.flush();
     }
 
     const end = std.time.microTimestamp();

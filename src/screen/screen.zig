@@ -167,7 +167,7 @@ pub fn diff(self: *const Screen, other: *const Screen, out: *Screen) std.mem.All
     std.debug.assert(self.len() == out.len());
     std.debug.assert(self.width_method == other.width_method);
 
-    const iter = ScreenDiffIterator.init(self, other);
+    var iter = ScreenDiffIterator.init(self, other);
     while (iter.next()) |cell_diff| {
         const cell = &out.buf[cell_diff.idx.value()];
         cell.* = cell_diff.cell.*;
@@ -201,21 +201,21 @@ pub const ScreenDiffIterator = struct {
             .first = first,
             .second = second,
 
-            .idx = 0,
+            .idx = .from(0),
             .end = .from(first.len()),
         };
     }
 
     pub fn next(self: *ScreenDiffIterator) ?CellDiff {
-        while (self.idx < self.end) {
+        while (self.idx.value() < self.end.value()) {
             defer self.idx = self.idx.increment(1);
 
-            const first = &self.first.buf[self.idx];
-            const second = &self.second.buf[self.idx];
+            const first = &self.first.buf[self.idx.value()];
+            const second = &self.second.buf[self.idx.value()];
 
             if (!first.style.eql(second.style) or
                 !first.segment.eql(second.segment) or
-                std.meta.activeTag(first) != std.meta.activeTag(second))
+                std.meta.activeTag(first.content) != std.meta.activeTag(second.content))
             {
                 return CellDiff{
                     .idx = self.idx,
@@ -236,7 +236,12 @@ pub const ScreenDiffIterator = struct {
                 .short => {
                     const first_content = first.content.short[0 .. std.mem.indexOf(u8, &first.content.short, &.{0}) orelse 8];
                     const second_content = second.content.short[0 .. std.mem.indexOf(u8, &second.content.short, &.{0}) orelse 8];
-                    return std.mem.eql(first_content, second_content);
+                    if (!std.mem.eql(u8, first_content, second_content)) {
+                        return CellDiff{
+                            .idx = self.idx,
+                            .cell = second,
+                        };
+                    }
                 },
                 .long_local => {
                     return CellDiff{

@@ -20,12 +20,7 @@ pub fn init(allocator: std.mem.Allocator, opts: ScreenOptions) std.mem.Allocator
 
     screen.* = try UnderlyingScreen.init(
         allocator,
-        .{
-            .rows = opts.size.y,
-            .cols = opts.size.x,
-            .x_pixel = 0,
-            .y_pixel = 0,
-        },
+        opts.size,
         opts.width_method,
     );
     errdefer screen.deinit();

@@ -90,8 +90,9 @@ pub fn draw(self_ptr: *anyopaque, ctx: *const Element.DrawContext) Element.DrawE
     });
     defer trace_zone.end();
 
-    std.debug.assert(ctx.view.size.x > 0);
-    std.debug.assert(ctx.view.size.y > 0);
+    if (ctx.view.size.isNull()) {
+        return;
+    }
 
     const self: *TextInput = @ptrCast(@alignCast(self_ptr));
     var view_writer = ctx.view.writer(&.{});

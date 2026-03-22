@@ -2,6 +2,7 @@ const std = @import("std");
 const tracy = @import("tracy");
 const zttio = @import("zttio");
 
+const Unicode = @import("../common/unicode.zig");
 const ScreenVec = @import("../common/screen_vec.zig");
 const IndexT = @import("../common/index.zig").IndexT;
 const Cell = @import("cell.zig");
@@ -23,8 +24,8 @@ buf: []Cell,
 str_arena: std.heap.ArenaAllocator,
 strs: std.ArrayList([]u8),
 
-winsize: zttio.Winsize,
-width_method: zttio.gwidth.Method = .wcwidth,
+size: ScreenVec,
+width_method: Unicode.WidthMethod = .wcwidth,
 
 cursor_pos: ScreenVec,
 cursor_visible: bool,
@@ -32,8 +33,8 @@ cursor_shape: CursorShape,
 
 // mouse_shape: zttio.Mouse.Shape = .default,
 
-pub fn init(allocator: std.mem.Allocator, winsize: zttio.Winsize, width_method: zttio.gwidth.Method) std.mem.Allocator.Error!Screen {
-    const buf = try allocator.alloc(Cell, @as(usize, winsize.cols) * @as(usize, winsize.rows));
+pub fn init(allocator: std.mem.Allocator, size: ScreenVec, width_method: Unicode.WidthMethod) std.mem.Allocator.Error!Screen {
+    const buf = try allocator.alloc(Cell, @as(usize, size.x) * @as(usize, size.y));
     errdefer allocator.free(buf);
     @memset(buf, Cell{});
 
@@ -49,7 +50,7 @@ pub fn init(allocator: std.mem.Allocator, winsize: zttio.Winsize, width_method: 
         .str_arena = str_arena,
         .strs = strs,
 
-        .winsize = winsize,
+        .size = size,
         .width_method = width_method,
 
         .cursor_pos = .zero,
@@ -66,14 +67,14 @@ pub fn deinit(self: *Screen) void {
 }
 
 /// this doesn't clear any data leaving the buffer in an undefined state
-pub fn resize(self: *Screen, new_winsize: zttio.Winsize) std.mem.Allocator.Error!void {
-    if (std.mem.eql(u8, std.mem.asBytes(&self.winsize), std.mem.asBytes(&new_winsize))) {
+pub fn resize(self: *Screen, new_size: ScreenVec) std.mem.Allocator.Error!void {
+    if (std.mem.eql(u8, std.mem.asBytes(&self.size), std.mem.asBytes(&new_size))) {
         return;
     }
 
-    self.winsize = new_winsize;
+    self.size = new_size;
 
-    const new_capacity: usize = @as(usize, new_winsize.cols) * @as(usize, new_winsize.rows);
+    const new_capacity: usize = @as(usize, new_size.x) * @as(usize, new_size.y);
     if (new_capacity <= self.buf.len) {
         return;
     }
@@ -104,24 +105,22 @@ pub fn clear(self: *Screen) void {
 }
 
 pub inline fn len(self: *const Screen) u32 {
-    return @as(u32, self.winsize.cols) * @as(u32, self.winsize.rows);
+    return @as(u32, self.size.x) * @as(u32, self.size.y);
 }
 
 pub inline fn strWidth(self: *const Screen, str: []const u8) usize {
-    const Unicode = @import("../common/unicode.zig");
-
     return Unicode.strWidth(str, self.width_method);
 }
 
 pub fn readCell(self: *const Screen, col: u16, row: u16) Cell {
-    return self.buf[row * self.winsize.cols + col];
+    return self.buf[row * self.size.x + col];
 }
 
 pub inline fn getCellIndex(self: *const Screen, row: u16, col: u16) Cell.Index {
-    std.debug.assert(row < self.winsize.rows);
-    std.debug.assert(col < self.winsize.cols);
+    std.debug.assert(row < self.size.y);
+    std.debug.assert(col < self.size.x);
 
-    return Cell.Index.from(@as(Cell.Index.UnderlyingT, row) * @as(Cell.Index.UnderlyingT, self.winsize.cols) + @as(Cell.Index.UnderlyingT, col));
+    return Cell.Index.from(@as(Cell.Index.UnderlyingT, row) * @as(Cell.Index.UnderlyingT, self.size.x) + @as(Cell.Index.UnderlyingT, col));
 }
 
 pub fn addStr(self: *Screen, str: []const u8) std.mem.Allocator.Error!StrIndex {
@@ -142,14 +141,14 @@ pub inline fn getStr(self: *const Screen, idx: StrIndex) []const u8 {
 
 /// asserts that you are slicing inside the screen
 pub fn view(self: *Screen, opts: View.Options) View {
-    std.debug.assert(opts.col <= self.winsize.cols);
-    std.debug.assert(opts.row <= self.winsize.rows);
+    std.debug.assert(opts.col <= self.size.x);
+    std.debug.assert(opts.row <= self.size.y);
 
-    const w = opts.width orelse self.winsize.cols - opts.col;
-    const h = opts.height orelse self.winsize.rows - opts.row;
+    const w = opts.width orelse self.size.x - opts.col;
+    const h = opts.height orelse self.size.y - opts.row;
 
-    std.debug.assert(opts.col + w <= self.winsize.cols);
-    std.debug.assert(opts.row + h <= self.winsize.rows);
+    std.debug.assert(opts.col + w <= self.size.x);
+    std.debug.assert(opts.row + h <= self.size.y);
 
     return View{
         .screen = self,
@@ -158,11 +157,16 @@ pub fn view(self: *Screen, opts: View.Options) View {
         .size = .{ .x = w, .y = h },
 
         .default_style = opts.default_style,
-        .overflow = opts.overflow,
     };
 }
 
 pub fn diff(self: *const Screen, other: *const Screen, out: *Screen) std.mem.Allocator.Error!void {
+    const trace_zone = tracy.Zone.begin(.{
+        .name = "[Screen]: diff",
+        .src = @src(),
+    });
+    defer trace_zone.end();
+
     std.debug.assert(self.len() == other.len());
     std.debug.assert(self.len() == out.len());
     std.debug.assert(self.width_method == other.width_method);
@@ -173,6 +177,9 @@ pub fn diff(self: *const Screen, other: *const Screen, out: *Screen) std.mem.All
         cell.* = cell_diff.cell.*;
 
         switch (cell_diff.cell.content) {
+            .empty => {
+                cell.content = .{ .char = ' ' };
+            },
             .long_local => |long_idx| {
                 cell.content.long_local = try out.addStr(other.getStr(long_idx));
             },
@@ -212,53 +219,14 @@ pub const ScreenDiffIterator = struct {
 
             const first = &self.first.buf[self.idx.value()];
             const second = &self.second.buf[self.idx.value()];
-
-            if (!first.style.eql(second.style) or
-                !first.segment.eql(second.segment) or
-                std.meta.activeTag(first.content) != std.meta.activeTag(second.content))
-            {
-                return CellDiff{
-                    .idx = self.idx,
-                    .cell = second,
-                };
+            if (first.eql(self.first, second, self.second)) {
+                continue;
             }
 
-            switch (first.content) {
-                .empty => {},
-                .char => {
-                    if (first.content.char != second.content.char) {
-                        return CellDiff{
-                            .idx = self.idx,
-                            .cell = second,
-                        };
-                    }
-                },
-                .short => {
-                    const first_content = first.content.short[0 .. std.mem.indexOf(u8, &first.content.short, &.{0}) orelse 8];
-                    const second_content = second.content.short[0 .. std.mem.indexOf(u8, &second.content.short, &.{0}) orelse 8];
-                    if (!std.mem.eql(u8, first_content, second_content)) {
-                        return CellDiff{
-                            .idx = self.idx,
-                            .cell = second,
-                        };
-                    }
-                },
-                .long_local => {
-                    return CellDiff{
-                        .idx = self.idx,
-                        .cell = second,
-                    };
-                },
-                .long_shared => {
-                    if (!first.content.long_shared.eql(second.content.long_shared)) {
-                        return CellDiff{
-                            .idx = self.idx,
-                            .cell = second,
-                        };
-                    }
-                },
-                .wide_continuation => {},
-            }
+            return CellDiff{
+                .idx = self.idx,
+                .cell = second,
+            };
         }
 
         return null;
@@ -268,4 +236,27 @@ pub const ScreenDiffIterator = struct {
         idx: Cell.Index,
         cell: *const Cell,
     };
+};
+
+pub const Diff = struct {
+    buf: []Cell,
+
+    size: ScreenVec,
+    width_method: Unicode.WidthMethod = .wcwidth,
+
+    cursor_pos: ScreenVec,
+    cursor_visible: bool,
+    cursor_shape: CursorShape,
+
+    pub inline fn len(self: *const Screen) u32 {
+        return @as(u32, self.size.cols) * @as(u32, self.size.rows);
+    }
+
+    pub fn clear(self: *Diff) void {
+        @memset(self.buf, Cell{});
+
+        self.cursor_pos = .zero;
+        self.cursor_shape = .blinking_bar;
+        self.cursor_visible = false;
+    }
 };

@@ -55,7 +55,9 @@ pub fn init_(self: *Engine, allocator: std.mem.Allocator, event_allocator: std.m
     self.screen_store = try ScreenStore.init(self.render_allocator.allocator());
     errdefer self.screen_store.deinit();
 
-    self.renderer = try Renderer.init(self.render_allocator.allocator(), self.tty.getWinsize(), self.tty.caps.unicode_width_method);
+    const winsize = self.tty.getWinsize();
+    const screen_size = ScreenVec{ .x = winsize.cols, .y = winsize.rows };
+    self.renderer = try Renderer.init(self.render_allocator.allocator(), screen_size, self.tty.caps.unicode_width_method);
     errdefer self.renderer.deinit(allocator);
 
     self.root_container = Container.init();
@@ -81,8 +83,8 @@ pub fn deinit(self: *Engine) void {
     self.tty.deinit();
 }
 
-pub inline fn resize(self: *Engine, new_winsize: zttio.Winsize) std.mem.Allocator.Error!void {
-    return self.renderer.resize(new_winsize);
+pub inline fn resize(self: *Engine, new_size: ScreenVec) std.mem.Allocator.Error!void {
+    return self.renderer.resize(new_size);
 }
 
 pub fn dispatchEventToFocusedElement(self: *Engine, event: Event) std.mem.Allocator.Error!void {
@@ -114,10 +116,7 @@ fn computeLayout(self: *Engine, allocator: std.mem.Allocator, screen: *Screen, r
 
         .handle = self.root,
 
-        .available = .{
-            .x = screen.winsize.cols,
-            .y = screen.winsize.rows,
-        },
+        .available = screen.size,
     });
 
     return needed_space;
@@ -182,15 +181,14 @@ pub fn renderNextFrame(self: *Engine) Renderer.RenderError!void {
         });
         defer stats_trace_zone.end();
 
-        var stats_writer = stats_view.writer(&.{});
+        var stats_buf: [128]u8 = undefined;
+        var stats_writer = stats_view.writer(&stats_buf);
         const writer = &stats_writer.writer;
 
-        try writer.print("Winsize: c-{d}x{d}-{d} p-{d}x{d} \n", .{
-            screen.winsize.cols,
-            screen.winsize.rows,
+        try writer.print("Screen: {d}x{d} -> {d}c \n", .{
+            screen.size.x,
+            screen.size.y,
             screen.buf.len,
-            screen.winsize.x_pixel,
-            screen.winsize.y_pixel,
         });
 
         {

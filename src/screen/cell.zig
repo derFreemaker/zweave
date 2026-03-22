@@ -18,6 +18,38 @@ comptime {
     std.debug.assert(@sizeOf(Cell) == 8);
 }
 
+pub fn eql(self: *const Cell, screen: *const Screen, other: *const Cell, other_screen: *const Screen) bool {
+    if (!self.style.eql(other.style) or
+        !self.segment.eql(other.segment) or
+        std.meta.activeTag(self.content) != std.meta.activeTag(other.content))
+    {
+        return false;
+    }
+
+    switch (self.content) {
+        .empty,
+        .wide_continuation,
+        => return true,
+
+        .char => {
+            return self.content.char == other.content.char;
+        },
+        .short => {
+            const self_content = self.content.short[0 .. std.mem.indexOf(u8, &self.content.short, &.{0}) orelse 8];
+            const other_content = other.content.short[0 .. std.mem.indexOf(u8, &other.content.short, &.{0}) orelse 8];
+            return std.mem.eql(u8, self_content, other_content);
+        },
+        .long_local => {
+            const self_content = screen.getStr(self.content.long_local);
+            const other_content = other_screen.getStr(other.content.long_local);
+            return std.mem.eql(u8, self_content, other_content);
+        },
+        .long_shared => {
+            return self.content.long_shared.eql(other.content.long_shared);
+        },
+    }
+}
+
 pub const shortStringMaxLength = 3;
 
 pub const Content = union(enum) {

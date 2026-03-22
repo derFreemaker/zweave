@@ -124,7 +124,6 @@ pub fn main() !u8 {
 
     const style2_handle = try engine.screen_store.addStyle(zweave.Style{
         .background = .{ .c8 = .green },
-        .attrs = .{ .italic = true },
     });
     defer engine.screen_store.removeStyle(style2_handle);
 
@@ -191,7 +190,7 @@ pub fn main() !u8 {
                 }
             },
             .winsize => |winsize| {
-                try engine.resize(winsize);
+                try engine.resize(.{ .x = winsize.cols, .y = winsize.rows });
             },
             else => {},
         }

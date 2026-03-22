@@ -71,7 +71,7 @@ pub fn insertGraphemeSlice(self: *GraphemeGapBuffer, allocator: std.mem.Allocato
 
     var grapheme_iter = Unicode.GraphemeClusterIterator.init(slice);
     while (grapheme_iter.next()) |grapheme| {
-        try self.insertGrapheme(allocator, grapheme.bytes(slice));
+        try self.insertGrapheme(allocator, grapheme.bytes(&grapheme_iter));
     }
 }
 

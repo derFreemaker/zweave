@@ -17,31 +17,41 @@ pub const GraphemeClusterIterator = struct {
     }
 
     pub fn next(self: *GraphemeClusterIterator) ?GraphemeCluster {
+        // const trace_zone = tracy.Zone.begin(.{
+        //     .name = "[Unicode]: GraphemeClusterIterator - next",
+        //     .src = @src(),
+        // });
+        // defer trace_zone.end();
+
         while (self.inner.next()) |res| {
-            // When leaving a break and entering a non-break, set the start of a cluster
+            // when leaving a break and entering a non-break, set the start of a cluster
             if (self.prev_break and !res.is_break) {
                 const cp_len: usize = std.unicode.utf8CodepointSequenceLength(res.cp) catch 1;
                 self.start = self.inner.i - cp_len;
             }
 
-            // A break marks the end of the current grapheme
+            // a break marks the end of the current grapheme
             if (res.is_break) {
                 const end = self.inner.i;
                 const s = self.start;
+
                 self.start = end;
                 self.prev_break = true;
+
                 return .{ .start = s, .len = end - s };
             }
 
             self.prev_break = false;
         }
 
-        // Flush the last grapheme if we ended mid-cluster
+        // flush the last grapheme if we ended mid-cluster
         if (!self.prev_break and self.start < self.str.len) {
             const s = self.start;
             const len = self.str.len - s;
+
             self.start = self.str.len;
             self.prev_break = true;
+
             return .{ .start = s, .len = len };
         }
 
@@ -56,8 +66,8 @@ pub const GraphemeClusterIterator = struct {
         start: usize,
         len: usize,
 
-        pub fn bytes(self: GraphemeCluster, str: []const u8) []const u8 {
-            return str[self.start .. self.start + self.len];
+        pub inline fn bytes(self: GraphemeCluster, iter: *const GraphemeClusterIterator) []const u8 {
+            return iter.str[self.start .. self.start + self.len];
         }
     };
 };

@@ -2,6 +2,7 @@ const std = @import("std");
 const tracy = @import("tracy");
 const zttio = @import("zttio");
 
+const Unicode = @import("common/unicode.zig");
 const ScreenVec = @import("common/screen_vec.zig");
 const Screen = @import("screen/screen.zig");
 const ScreenStore = @import("screen/screen_store.zig");
@@ -16,17 +17,19 @@ prev: *Screen,
 
 diff: *Screen,
 
-pub fn init(allocator: std.mem.Allocator, winsize: zttio.Winsize, unicode_width_method: zttio.gwidth.Method) std.mem.Allocator.Error!Renderer {
+redraw: bool,
+
+pub fn init(allocator: std.mem.Allocator, size: ScreenVec, unicode_width_method: Unicode.WidthMethod) std.mem.Allocator.Error!Renderer {
     var first_screen = try allocator.create(Screen);
-    first_screen.* = try Screen.init(allocator, winsize, unicode_width_method);
+    first_screen.* = try Screen.init(allocator, size, unicode_width_method);
     errdefer first_screen.deinit();
 
     var second_screen = try allocator.create(Screen);
-    second_screen.* = try Screen.init(allocator, winsize, unicode_width_method);
+    second_screen.* = try Screen.init(allocator, size, unicode_width_method);
     errdefer second_screen.deinit();
 
     var diff_screen = try allocator.create(Screen);
-    diff_screen.* = try Screen.init(allocator, winsize, unicode_width_method);
+    diff_screen.* = try Screen.init(allocator, size, unicode_width_method);
     errdefer diff_screen.deinit();
 
     return Renderer{
@@ -34,6 +37,8 @@ pub fn init(allocator: std.mem.Allocator, winsize: zttio.Winsize, unicode_width_
         .prev = first_screen,
 
         .diff = diff_screen,
+
+        .redraw = true,
     };
 }
 
@@ -59,22 +64,26 @@ pub fn prepareNextFrameScreen(self: *Renderer) *Screen {
     });
     defer trace_zone.end();
 
-    self.next.clear();
-    self.diff.clear();
+    self.getScreen().clear();
+    if (!self.redraw) {
+        self.diff.clear();
+    }
 
-    return self.next;
+    return self.getScreen();
 }
 
-pub fn resize(self: *Renderer, new_winsize: zttio.Winsize) std.mem.Allocator.Error!void {
+pub fn resize(self: *Renderer, new_size: ScreenVec) std.mem.Allocator.Error!void {
     const trace_zone = tracy.Zone.begin(.{
         .name = "[Renderer]: resize",
         .src = @src(),
     });
     defer trace_zone.end();
 
-    try self.next.resize(new_winsize);
-    try self.prev.resize(new_winsize);
-    try self.diff.resize(new_winsize);
+    try self.next.resize(new_size);
+    try self.prev.resize(new_size);
+    try self.diff.resize(new_size);
+
+    self.redraw = true;
 }
 
 pub const RenderError = std.mem.Allocator.Error || std.Io.Writer.Error;
@@ -89,8 +98,13 @@ pub fn render(self: *Renderer, screen_store: *const ScreenStore, tty: *zttio.Tty
     tty.startSync() catch {};
 
     const next = self.next;
-    // try renderDirect(next, screen_store, tty);
-    try self.renderDiff(screen_store, tty);
+
+    if (self.redraw) {
+        try renderDirect(next, screen_store, tty);
+    } else {
+        try self.prev.diff(next, self.diff);
+        try renderDiff(self.diff, screen_store, tty);
+    }
 
     tty.endSync() catch {};
 
@@ -98,25 +112,22 @@ pub fn render(self: *Renderer, screen_store: *const ScreenStore, tty: *zttio.Tty
     self.prev = next;
 }
 
-fn renderDiff(self: *Renderer, store: *const ScreenStore, tty: *zttio.Tty) RenderError!void {
+fn renderDiff(screen: *const Screen, store: *const ScreenStore, tty: *zttio.Tty) RenderError!void {
     try tty.hideCursor();
     try tty.moveCursor(.home);
     try tty.stdout.writeAll(zttio.Styling.reset);
 
-    const diff_screen = self.diff;
-    try self.next.diff(self.prev, diff_screen);
-
-    var next_wrap = diff_screen.winsize.cols;
+    var next_wrap = screen.size.x;
     var cur_style_handle: ScreenStore.StyleHandle = .invalid;
     var cur_segment_handle: ScreenStore.SegmentHandle = .invalid;
     var current_segment: *const Segment = undefined;
     var i: usize = 0;
     var jumped_cells: u16 = 0;
-    while (i < diff_screen.len()) : (i += 1) {
-        const cell = diff_screen.buf[i];
+    while (i < screen.len()) : (i += 1) {
+        const cell = screen.buf[i];
         if (i >= next_wrap) {
             try tty.stdout.writeByte('\n');
-            next_wrap += diff_screen.winsize.cols;
+            next_wrap += screen.size.x;
             jumped_cells = 0;
         }
 
@@ -170,7 +181,7 @@ fn renderDiff(self: *Renderer, store: *const ScreenStore, tty: *zttio.Tty) Rende
                 try tty.stdout.writeAll(s[0..end]);
             },
             .long_local => |idx| {
-                const str = diff_screen.getStr(idx);
+                const str = screen.getStr(idx);
                 try tty.stdout.writeAll(str);
             },
             .long_shared => |handle| {
@@ -180,11 +191,11 @@ fn renderDiff(self: *Renderer, store: *const ScreenStore, tty: *zttio.Tty) Rende
         }
     }
 
-    if (diff_screen.cursor_visible) {
-        try tty.setCursorShape(diff_screen.cursor_shape);
+    if (screen.cursor_visible) {
+        try tty.setCursorShape(screen.cursor_shape);
         try tty.moveCursor(.{ .pos = .{
-            .row = diff_screen.cursor_pos.x + 1,
-            .column = diff_screen.cursor_pos.y + 1,
+            .row = screen.cursor_pos.x + 1,
+            .column = screen.cursor_pos.y + 1,
         } });
         try tty.showCursor();
     }
@@ -195,7 +206,7 @@ fn renderDirect(screen: *const Screen, store: *const ScreenStore, tty: *zttio.Tt
     try tty.hideCursor();
     try tty.moveCursor(.home);
 
-    var next_wrap: usize = screen.winsize.cols;
+    var next_wrap: usize = screen.size.x;
     var current_style_handle: ScreenStore.StyleHandle = .invalid;
     var current_segment_handle: ScreenStore.SegmentHandle = .invalid;
     var current_segment: *const Segment = undefined;
@@ -204,7 +215,7 @@ fn renderDirect(screen: *const Screen, store: *const ScreenStore, tty: *zttio.Tt
         const cell = screen.buf[i];
         if (i >= next_wrap) {
             try tty.stdout.writeByte('\n');
-            next_wrap += screen.winsize.cols;
+            next_wrap += screen.size.x;
         }
 
         if (cell.content == .wide_continuation) {

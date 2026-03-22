@@ -8,6 +8,10 @@ pub const zero = ScreenVec{
 x: u16,
 y: u16,
 
-pub fn inside(self: ScreenVec, other: ScreenVec) bool {
+pub inline fn isNull(self: ScreenVec) bool {
+    return self.x == 0 or self.y == 0;
+}
+
+pub inline fn inside(self: ScreenVec, other: ScreenVec) bool {
     return self.x < other.x and self.y < other.y;
 }

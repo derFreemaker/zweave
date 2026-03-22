@@ -37,18 +37,81 @@ pub fn getCellIndex(self: *const View, row: u16, col: u16) Cell.Index {
     return self.screen.getCellIndex(self.pos.y + row, self.pos.x + col);
 }
 
+/// `cell_idx` is the cell which is going to be overriden.
+inline fn correctCellsFront(self: *const View, cell_idx: Cell.Index) void {
+    // This function can not be profiled directly since the cost of profiling is too high.
+
+    if (cell_idx.value() <= 0) return;
+
+    // If the cell we are going to override is not a 'wide_continuation' than do nothing.
+    if (self.screen.buf[cell_idx.value()].content != .wide_continuation) return;
+
+    const inlined_loops = 3;
+    // we start at 1 since '0' would be the cell which gets overriden anyway.
+    inline for (1..inlined_loops) |i| {
+        if (cell_idx.value() - i < 0) return;
+
+        const cell: *Cell = &self.screen.buf[cell_idx.value() - i];
+        if (cell.content != .wide_continuation) {
+            cell.content = .empty;
+            return;
+        }
+
+        cell.content = .empty;
+    }
+
+    var i: isize = cell_idx.value() - inlined_loops;
+    while (i >= 0) : (i -= 1) {
+        const cell: *Cell = &self.screen.buf[@intCast(cell_idx.value() - i)];
+        if (cell.content != .wide_continuation) {
+            cell.content = .empty;
+            return;
+        }
+
+        cell.content = .empty;
+    }
+}
+
+/// `cell_idx` is the cell behind the now overriden cell.
+inline fn correctCellsEnd(self: *const View, cell_idx: Cell.Index) void {
+    // This function can not be profiled directly since the cost of profiling is too high.
+
+    const buf_len = self.screen.len();
+
+    const inlined_loops = 3;
+    inline for (0..inlined_loops) |i| {
+        if (cell_idx.value() + i >= buf_len) return;
+
+        const cell: *Cell = &self.screen.buf[cell_idx.value() + i];
+        if (cell.content != .wide_continuation) {
+            return;
+        }
+
+        cell.content = .empty;
+    }
+
+    var i: usize = cell_idx.value() + inlined_loops;
+    while (i < buf_len) : (i += 1) {
+        const cell: *Cell = &self.screen.buf[cell_idx.value() + i];
+        if (cell.content != .wide_continuation) {
+            @branchHint(.likely);
+            return;
+        }
+
+        cell.content = .empty;
+    }
+}
+
 pub const WriteCellOptions = struct {
+    max_width: ?u16 = null,
+
     style: ScreenStore.StyleHandle = .invalid,
     segment: ScreenStore.SegmentHandle = .invalid,
 };
 
 /// 'store' only needs to be provided if a 'long_shared' content is given.
 pub fn writeCell(self: *const View, store: ?*const ScreenStore, row: u16, col: u16, content: Cell.Content, opts: WriteCellOptions) u16 {
-    const trace_zone = tracy.Zone.begin(.{
-        .name = "[ScreenView]: writeCell",
-        .src = @src(),
-    });
-    defer trace_zone.end();
+    // This function can not be profiled directly since the cost of profiling is too high.
 
     if (row >= self.size.y or col >= self.size.x) {
         return 0;
@@ -59,17 +122,42 @@ pub fn writeCell(self: *const View, store: ?*const ScreenStore, row: u16, col: u
     std.debug.assert(self.pos.x + col < screen.size.x);
 
     const width: u16 = content.calcWidth(screen, store);
-    std.debug.assert(self.pos.x + col + width <= screen.size.x);
+    const cell_idx = self.getCellIndex(row, col);
+    if (opts.max_width) |max_width| {
+        if (width > max_width) {
+            @memset(screen.buf[cell_idx.value() + 1 .. cell_idx.value() + max_width], Cell{
+                .content = .wide_continuation,
 
-    const cell_index = self.getCellIndex(row, col);
-    screen.buf[cell_index.value()] = .{
+                .style = opts.style,
+                .segment = opts.segment,
+            });
+
+            return max_width;
+        }
+    }
+    if (self.pos.x + col + width > screen.size.x) {
+        const remaining_width = screen.size.x - self.pos.x + col;
+        @memset(screen.buf[cell_idx.value() + 1 .. cell_idx.value() + remaining_width], Cell{
+            .content = .wide_continuation,
+
+            .style = opts.style,
+            .segment = opts.segment,
+        });
+
+        return remaining_width;
+    }
+
+    @call(.always_inline, correctCellsFront, .{ self, cell_idx });
+    defer @call(.always_inline, correctCellsEnd, .{ self, cell_idx.increment(width) });
+
+    screen.buf[cell_idx.value()] = .{
         .content = content,
 
         .style = if (opts.style.isInvalid()) self.default_style else opts.style,
         .segment = opts.segment,
     };
 
-    @memset(screen.buf[cell_index.value() + 1 .. cell_index.value() + width], Cell{
+    @memset(screen.buf[cell_idx.value() + 1 .. cell_idx.value() + width], Cell{
         .content = .wide_continuation,
 
         .style = opts.style,
@@ -96,8 +184,8 @@ pub fn fill(self: *const View, store: ?*const ScreenStore, row: u16, col: u16, h
         return;
     }
 
-    const safe_height = @min(self.size.y - row, height);
-    const safe_width = @min(self.size.x - col, width);
+    const safe_height: u16 = @min(self.size.y - row, height);
+    const safe_width: u16 = @min(self.size.x - col, width);
 
     const screen = self.screen;
     std.debug.assert(self.pos.y + row < screen.size.y);
@@ -142,6 +230,9 @@ pub fn fill(self: *const View, store: ?*const ScreenStore, row: u16, col: u16, h
 
     for (0..safe_height) |h| {
         const row_idx = self.getCellIndex(@intCast(row + h), col);
+        self.correctCellsFront(row_idx);
+        defer self.correctCellsEnd(row_idx.increment(safe_width));
+
         var current_col_idx = row_idx;
         for (0..amount) |_| {
             const end_idx = current_col_idx.increment(cells);
@@ -191,6 +282,9 @@ pub fn write(self: *const View, row: u16, col: u16, content: []const u8, opts: W
         return .zero;
     }
 
+    const max_width = if (opts.max_width) |max_width| @min(self.size.x - col, max_width) else self.size.x - col;
+    const max_height = if (opts.max_height) |max_height| @min(self.size.y - row, max_height) else self.size.y - row;
+
     const Unicode = @import("../common/unicode.zig");
 
     var cur_col: u16 = 0;
@@ -219,7 +313,7 @@ pub fn write(self: *const View, row: u16, col: u16, content: []const u8, opts: W
                         continue :newline '\n';
                     },
                     '\n' => {
-                        if (opts.max_height != null and cur_row + 1 >= opts.max_height.?) {
+                        if (cur_row + 1 >= max_height) {
                             return ScreenVec{ .x = cur_row + 1, .y = cur_col };
                         }
 
@@ -230,7 +324,7 @@ pub fn write(self: *const View, row: u16, col: u16, content: []const u8, opts: W
                     else => {},
                 }
 
-                if (opts.max_width != null and cur_col >= opts.max_width.?) {
+                if (cur_col >= max_width) {
                     continue;
                 }
 
@@ -238,11 +332,9 @@ pub fn write(self: *const View, row: u16, col: u16, content: []const u8, opts: W
             },
 
             2...Cell.shortStringMaxLength => {
-                if (opts.max_width) |max_width| {
-                    const str_width = self.strWidth(str);
-                    if (cur_col + str_width > max_width) {
-                        continue;
-                    }
+                const str_width = self.strWidth(str);
+                if (cur_col + str_width > max_width) {
+                    continue;
                 }
 
                 cell_content = .{ .short = [Cell.shortStringMaxLength]u8{ 0, 0, 0 } };
@@ -254,11 +346,9 @@ pub fn write(self: *const View, row: u16, col: u16, content: []const u8, opts: W
             },
 
             else => {
-                if (opts.max_width) |max_width| {
-                    const str_width = self.strWidth(str);
-                    if (cur_col + str_width > max_width) {
-                        continue;
-                    }
+                const str_width = self.strWidth(str);
+                if (cur_col + str_width > max_width) {
+                    continue;
                 }
 
                 const idx = try screen.addStr(str);
@@ -267,6 +357,8 @@ pub fn write(self: *const View, row: u16, col: u16, content: []const u8, opts: W
         }
 
         cur_col += self.writeCell(null, row + cur_row, col + cur_col, cell_content, .{
+            .max_width = max_width - cur_col,
+
             .style = opts.style,
             .segment = opts.segment,
         });

@@ -60,13 +60,15 @@ const Block = struct {
             .handle = ctx.handle,
 
             .view = ctx.view.view(.{
+                .col = @divFloor(view.size.x, 2),
+
                 .height = ctx.view.size.y,
                 .width = @divFloor(ctx.view.size.x, 2),
             }),
             .screen_store = ctx.screen_store,
         });
 
-        view.fill(ctx.screen_store, 0, @divFloor(view.size.x, 2), view.size.y, @divFloor(view.size.x, 2), .{ .long_shared = self.content_handle }, .{
+        view.fill(ctx.screen_store, 0, 0, view.size.y, @divFloor(view.size.x, 2), .{ .long_shared = self.content_handle }, .{
             .style = self.style,
         });
 
@@ -127,7 +129,7 @@ pub fn main() !u8 {
     });
     defer engine.screen_store.removeStyle(style2_handle);
 
-    var block = try Block.init(allocator, 0.5, 0.67, str2_handle, style2_handle);
+    var block = try Block.init(allocator, 0.6, 0.6, str2_handle, style2_handle);
     defer block.deinit();
     const block_handle = try engine.tree.create(block.element());
     defer engine.tree.destroy(block_handle);
@@ -148,7 +150,7 @@ pub fn main() !u8 {
     const input_handle = try engine.tree.create(input.element());
     defer engine.tree.destroy(input_handle);
 
-    try engine.tree.addChildren(engine.root, &.{ screen_handle, block_handle, input_handle });
+    try engine.tree.addChildren(engine.root, &.{ block_handle, screen_handle, input_handle });
 
     while (true) {
         var event = engine.tty.nextEvent();

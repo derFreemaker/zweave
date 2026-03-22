@@ -101,6 +101,7 @@ pub fn render(self: *Renderer, screen_store: *const ScreenStore, tty: *zttio.Tty
 
     if (self.redraw) {
         try renderDirect(next, screen_store, tty);
+        self.redraw = false;
     } else {
         try self.prev.diff(next, self.diff);
         try renderDiff(self.diff, screen_store, tty);
@@ -136,7 +137,9 @@ fn renderDiff(screen: *const Screen, store: *const ScreenStore, tty: *zttio.Tty)
                 jumped_cells += 1;
                 continue;
             },
-            .wide_continuation => continue,
+            .wide_continuation => {
+                continue;
+            },
             else => {
                 try tty.moveCursor(.{ .right = jumped_cells });
                 jumped_cells = 0;

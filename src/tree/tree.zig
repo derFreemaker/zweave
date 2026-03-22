@@ -112,50 +112,7 @@ pub fn create(self: *Tree, interface: Element.Interface) Element.RegisterError!E
 
 pub fn destroy(self: *Tree, handle: Element.Handle) void {
     if (!self.isValid(handle)) return;
-
-    const element = self.getMut(handle);
-
-    if (!element.parent.isInvalid()) {
-        const parent = self.getMut(element.parent);
-        if (parent.first_child.eql(handle)) {
-            if (element.next_sibling.isInvalid()) {
-                std.debug.assert(parent.last_child.eql(handle));
-
-                parent.first_child = .invalid;
-                parent.last_child = .invalid;
-            } else {
-                std.debug.assert(self.isValid(element.next_sibling));
-
-                parent.first_child = element.next_sibling;
-            }
-        } else if (parent.last_child.eql(handle)) {
-            std.debug.assert(self.isValid(element.prev_sibling));
-
-            parent.last_child = element.prev_sibling;
-        }
-    }
-
-    if (!element.next_sibling.isInvalid()) {
-        const next_sibling = self.getMut(element.next_sibling);
-        std.debug.assert(next_sibling.prev_sibling.eql(handle));
-
-        if (!element.prev_sibling.isInvalid()) {
-            const prev_sibling = self.getMut(element.prev_sibling);
-            std.debug.assert(prev_sibling.next_sibling.eql(handle));
-
-            next_sibling.prev_sibling = element.prev_sibling;
-            prev_sibling.next_sibling = element.next_sibling;
-        } else {
-            next_sibling.prev_sibling = .invalid;
-        }
-    } else if (!element.prev_sibling.isInvalid()) {
-        @branchHint(.unlikely);
-
-        const prev_sibiling = self.getMut(element.prev_sibling);
-        std.debug.assert(prev_sibiling.next_sibling.eql(handle));
-
-        prev_sibiling.next_sibling = .invalid;
-    }
+    self.removeChild(handle);
 
     self.layout_data[handle.index] = .zero;
     self.handle_store.destroy(handle);
@@ -206,6 +163,51 @@ pub fn addChildren(self: *Tree, parent_handle: Element.Handle, children: []const
 
         cur_child_handle = child_handle;
     }
+}
+
+pub fn removeChild(self: *Tree, child_handle: Element.Handle) void {
+    const child = self.getMut(child_handle);
+    if (child.parent.isInvalid()) return;
+
+    const parent = self.getMut(child.parent);
+    if (parent.first_child.eql(child_handle)) {
+        if (!child.next_sibling.isInvalid()) {
+            std.debug.assert(self.isValid(child.next_sibling));
+
+            parent.first_child = child.next_sibling;
+        } else {
+            std.debug.assert(parent.last_child.eql(child_handle));
+
+            parent.first_child = .invalid;
+            parent.last_child = .invalid;
+        }
+    } else if (parent.last_child.eql(child_handle)) {
+        std.debug.assert(self.isValid(child.prev_sibling));
+
+        parent.last_child = child.prev_sibling;
+    }
+
+    if (!child.next_sibling.isInvalid()) {
+        const next_sibling = self.getMut(child.next_sibling);
+        std.debug.assert(next_sibling.prev_sibling.eql(child_handle));
+
+        if (!child.prev_sibling.isInvalid()) {
+            const prev_sibling = self.getMut(child.prev_sibling);
+            std.debug.assert(prev_sibling.next_sibling.eql(child_handle));
+
+            next_sibling.prev_sibling = child.prev_sibling;
+            prev_sibling.next_sibling = child.next_sibling;
+        } else {
+            next_sibling.prev_sibling = .invalid;
+        }
+    } else if (!child.prev_sibling.isInvalid()) {
+        const prev_sibiling = self.getMut(child.prev_sibling);
+        std.debug.assert(prev_sibiling.next_sibling.eql(child_handle));
+
+        prev_sibiling.next_sibling = .invalid;
+    }
+
+    child.parent = .invalid;
 }
 
 /// The childrens should not be changed while iterating over them.

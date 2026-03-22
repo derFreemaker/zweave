@@ -31,7 +31,7 @@ root: Element.Handle,
 show_stats: bool,
 stats_style: ScreenStore.StyleHandle,
 
-last_frame_time: i64,
+prev_frame_time: i64,
 
 pub const InitError = error{UnableToInitTty} || std.mem.Allocator.Error;
 
@@ -66,12 +66,12 @@ pub fn init_(self: *Engine, allocator: std.mem.Allocator, event_allocator: std.m
 
     self.show_stats = false;
     self.stats_style = try self.screen_store.addStyle(Style{
-        .inherit = true,
-        .attrs = .{ .reverse = true },
+        .background = .{ .c8 = .black },
+        .foreground = .{ .c8 = .bright_green },
     });
     errdefer self.screen_store.removeStyle(self.stats_style);
 
-    self.last_frame_time = 0;
+    self.prev_frame_time = 0;
 }
 
 pub fn deinit(self: *Engine) void {
@@ -185,38 +185,35 @@ pub fn renderNextFrame(self: *Engine) Renderer.RenderError!void {
         var stats_writer = stats_view.writer(&stats_buf);
         const writer = &stats_writer.writer;
 
-        try writer.print("Screen: {d}x{d} -> {d}c \n", .{
+        try writer.print("Screen: {d}x{d} -> {d}c\n", .{
             screen.size.x,
             screen.size.y,
             screen.buf.len,
         });
 
         {
-            _ = try writer.write("Memory Usage: ");
+            _ = try writer.write("Memory Usage:");
 
-            _ = try writer.write("Tree-");
+            _ = try writer.write(" Tree-");
             try self.tree_allocator.prettyPrintBytesUsed(writer);
-            try writer.writeByte(' ');
 
-            _ = try writer.write("Render-");
+            _ = try writer.write(" Render-");
             try self.render_allocator.prettyPrintBytesUsed(writer);
-            try writer.writeByte(' ');
 
             try writer.writeByte('\n');
         }
 
         {
-            _ = try writer.write("Memory Capacity: ");
+            _ = try writer.write("Memory Capacity:");
 
-            try writer.print("DrawLoop-{d:.1}kB", .{
+            try writer.print(" DrawLoop-{d:.1}kB", .{
                 @as(f64, @floatFromInt(self.arena.queryCapacity())) / 1024,
             });
-            try writer.writeByte(' ');
 
             try writer.writeByte('\n');
         }
 
-        _ = try writer.print("Last Frame Time: {d}µs\n", .{self.last_frame_time});
+        _ = try writer.print("prev Frame Time: {d}µs\n", .{self.prev_frame_time});
 
         try writer.flush();
     }
@@ -234,5 +231,5 @@ pub fn renderNextFrame(self: *Engine) Renderer.RenderError!void {
     }
 
     const end = std.time.microTimestamp();
-    self.last_frame_time = end - start;
+    self.prev_frame_time = end - start;
 }

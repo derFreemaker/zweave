@@ -68,7 +68,7 @@ pub fn deinit(self: *Screen) void {
 
 /// this doesn't clear any data leaving the buffer in an undefined state
 pub fn resize(self: *Screen, new_size: ScreenVec) std.mem.Allocator.Error!void {
-    if (std.mem.eql(u8, std.mem.asBytes(&self.size), std.mem.asBytes(&new_size))) {
+    if (self.size.x == new_size.x and self.size.y == new_size.y) {
         return;
     }
 

@@ -148,6 +148,7 @@ pub fn addChildren(self: *Tree, parent_handle: Element.Handle, children: []const
         std.debug.assert(self.isValid(child_handle));
 
         const child = self.getMut(child_handle);
+        std.debug.assert(child.parent.isInvalid());
         child.parent = parent_handle;
 
         if (cur_child_handle.isInvalid()) {

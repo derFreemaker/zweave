@@ -15,9 +15,9 @@ const Renderer = @This();
 next: *Screen,
 prev: *Screen,
 
-diff: *Screen,
+diff: Screen.Diff,
 
-redraw: bool,
+redraw: bool = true,
 
 pub fn init(allocator: std.mem.Allocator, size: ScreenVec, unicode_width_method: Unicode.WidthMethod) std.mem.Allocator.Error!Renderer {
     var first_screen = try allocator.create(Screen);
@@ -28,23 +28,19 @@ pub fn init(allocator: std.mem.Allocator, size: ScreenVec, unicode_width_method:
     second_screen.* = try Screen.init(allocator, size, unicode_width_method);
     errdefer second_screen.deinit();
 
-    var diff_screen = try allocator.create(Screen);
-    diff_screen.* = try Screen.init(allocator, size, unicode_width_method);
-    errdefer diff_screen.deinit();
+    var diff = try Screen.Diff.init(allocator, size);
+    errdefer diff.deinit();
 
     return Renderer{
         .next = second_screen,
         .prev = first_screen,
 
-        .diff = diff_screen,
-
-        .redraw = true,
+        .diff = diff,
     };
 }
 
 pub fn deinit(self: *Renderer, allocator: std.mem.Allocator) void {
     self.diff.deinit();
-    allocator.destroy(self.diff);
 
     self.prev.deinit();
     allocator.destroy(self.prev);
@@ -100,11 +96,11 @@ pub fn render(self: *Renderer, screen_store: *const ScreenStore, tty: *zttio.Tty
     const next = self.next;
 
     if (self.redraw) {
-        try renderDirect(next, screen_store, tty);
         self.redraw = false;
+        try renderDirect(next, screen_store, tty);
     } else {
-        try self.prev.diff(next, self.diff);
-        try renderDiff(self.diff, screen_store, tty);
+        self.prev.diff(next, &self.diff);
+        try renderDiff(next, &self.diff, screen_store, tty);
     }
 
     tty.endSync() catch {};
@@ -113,22 +109,22 @@ pub fn render(self: *Renderer, screen_store: *const ScreenStore, tty: *zttio.Tty
     self.prev = next;
 }
 
-fn renderDiff(screen: *const Screen, store: *const ScreenStore, tty: *zttio.Tty) RenderError!void {
+fn renderDiff(screen: *const Screen, diff: *const Screen.Diff, store: *const ScreenStore, tty: *zttio.Tty) RenderError!void {
     try tty.hideCursor();
     try tty.moveCursor(.home);
     try tty.stdout.writeAll(zttio.Styling.reset);
 
-    var next_wrap = screen.size.x;
+    var next_wrap = diff.size.x;
     var cur_style_handle: ScreenStore.StyleHandle = .invalid;
     var cur_segment_handle: ScreenStore.SegmentHandle = .invalid;
     var current_segment: *const Segment = undefined;
     var i: usize = 0;
     var jumped_cells: u16 = 0;
-    while (i < screen.len()) : (i += 1) {
-        const cell = screen.buf[i];
+    while (i < diff.len()) : (i += 1) {
+        const cell = diff.buf[i];
         if (i >= next_wrap) {
             try tty.stdout.writeByte('\n');
-            next_wrap += screen.size.x;
+            next_wrap += diff.size.x;
             jumped_cells = 0;
         }
 

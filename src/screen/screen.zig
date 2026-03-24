@@ -160,7 +160,7 @@ pub fn view(self: *Screen, opts: View.Options) View {
     };
 }
 
-pub fn diff(self: *const Screen, other: *const Screen, out: *Screen) std.mem.Allocator.Error!void {
+pub fn diff(self: *const Screen, other: *const Screen, out: *Diff) void {
     const trace_zone = tracy.Zone.begin(.{
         .name = "[Screen]: diff",
         .src = @src(),
@@ -180,18 +180,9 @@ pub fn diff(self: *const Screen, other: *const Screen, out: *Screen) std.mem.All
             .empty => {
                 cell.content = .{ .char = ' ' };
             },
-            .long_local => |long_idx| {
-                cell.content.long_local = try out.addStr(other.getStr(long_idx));
-            },
             else => {},
         }
     }
-
-    out.width_method = other.width_method;
-
-    out.cursor_pos = other.cursor_pos;
-    out.cursor_shape = other.cursor_shape;
-    out.cursor_visible = other.cursor_visible;
 }
 
 pub const ScreenDiffIterator = struct {
@@ -239,24 +230,53 @@ pub const ScreenDiffIterator = struct {
 };
 
 pub const Diff = struct {
+    allocator: std.mem.Allocator,
+
     buf: []Cell,
-
     size: ScreenVec,
-    width_method: Unicode.WidthMethod = .wcwidth,
 
-    cursor_pos: ScreenVec,
-    cursor_visible: bool,
-    cursor_shape: CursorShape,
+    pub fn init(allocator: std.mem.Allocator, size: ScreenVec) std.mem.Allocator.Error!Diff {
+        const buf = try allocator.alloc(Cell, size.x * size.y);
+        errdefer allocator.free(buf);
 
-    pub inline fn len(self: *const Screen) u32 {
-        return @as(u32, self.size.cols) * @as(u32, self.size.rows);
+        return Diff{
+            .allocator = allocator,
+
+            .buf = buf,
+            .size = size,
+        };
+    }
+
+    pub fn deinit(self: *Diff) void {
+        self.allocator.free(self.buf);
+    }
+
+    /// this doesn't clear any data leaving the buffer in an undefined state
+    pub fn resize(self: *Diff, new_size: ScreenVec) std.mem.Allocator.Error!void {
+        if (self.size.x == new_size.x and self.size.y == new_size.y) {
+            return;
+        }
+
+        self.size = new_size;
+
+        const new_capacity: usize = @as(usize, new_size.x) * @as(usize, new_size.y);
+        if (new_capacity <= self.buf.len) {
+            return;
+        }
+
+        if (self.allocator.resize(self.buf, new_capacity)) {
+            self.buf.len = new_capacity;
+        } else {
+            self.allocator.free(self.buf);
+            self.buf = try self.allocator.alloc(Cell, new_capacity);
+        }
+    }
+
+    pub inline fn len(self: *const Diff) u32 {
+        return @as(u32, self.size.x) * @as(u32, self.size.y);
     }
 
     pub fn clear(self: *Diff) void {
         @memset(self.buf, Cell{});
-
-        self.cursor_pos = .zero;
-        self.cursor_shape = .blinking_bar;
-        self.cursor_visible = false;
     }
 };

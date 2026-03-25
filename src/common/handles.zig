@@ -118,7 +118,10 @@ pub fn HandleT(comptime ParentT: type, comptime T: type, comptime safety: Handle
         .unsafe => false,
     };
 
-    return struct {
+    return packed struct {
+        pub const UnderlyingT = T;
+        pub const Safety = safety;
+
         const Self = @This();
 
         pub const invalid = Self{ .index = std.math.maxInt(T), .generation = if (buildingSafe) 0 else void{} };

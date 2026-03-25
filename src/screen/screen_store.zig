@@ -6,7 +6,7 @@ const Segment = @import("segment.zig");
 
 const ScreenStore = @This();
 
-const StrStore = Handles.HandleStoreT([]const u8, u16, .unsafe);
+const StrStore = Handles.HandleStoreT([]const u8, u24, .unsafe);
 pub const StrHandle = StrStore.Handle;
 
 const StyleStore = Handles.HandleStoreT(Style, u16, .unsafe);

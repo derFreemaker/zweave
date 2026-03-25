@@ -17,12 +17,6 @@ pub const GraphemeClusterIterator = struct {
     }
 
     pub fn next(self: *GraphemeClusterIterator) ?GraphemeCluster {
-        // const trace_zone = tracy.Zone.begin(.{
-        //     .name = "[Unicode]: GraphemeClusterIterator - next",
-        //     .src = @src(),
-        // });
-        // defer trace_zone.end();
-
         while (self.inner.next()) |res| {
             // when leaving a break and entering a non-break, set the start of a cluster
             if (self.prev_break and !res.is_break) {
@@ -75,11 +69,11 @@ pub const GraphemeClusterIterator = struct {
 pub const WidthMethod = zttio.gwidth.Method;
 
 pub inline fn strWidth(str: []const u8, method: WidthMethod) usize {
-    const trace_zone = tracy.Zone.begin(.{
-        .name = "[Unicode]: strWidth",
-        .src = @src(),
-    });
-    defer trace_zone.end();
+    // const trace_zone = tracy.Zone.begin(.{
+    //     .name = "[Unicode]: strWidth",
+    //     .src = @src(),
+    // });
+    // defer trace_zone.end();
 
     return zttio.gwidth.gwidth(str, method);
 }

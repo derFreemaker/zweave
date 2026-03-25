@@ -100,7 +100,7 @@ pub fn render(self: *Renderer, screen_store: *const ScreenStore, tty: *zttio.Tty
         try renderDirect(next, screen_store, tty);
     } else {
         self.prev.diff(next, &self.diff);
-        try renderDiff(next, &self.diff, screen_store, tty);
+        try renderDiff(next, screen_store, &self.diff, tty);
     }
 
     tty.endSync() catch {};
@@ -109,7 +109,7 @@ pub fn render(self: *Renderer, screen_store: *const ScreenStore, tty: *zttio.Tty
     self.prev = next;
 }
 
-fn renderDiff(screen: *const Screen, diff: *const Screen.Diff, store: *const ScreenStore, tty: *zttio.Tty) RenderError!void {
+fn renderDiff(screen: *const Screen, store: *const ScreenStore, diff: *const Screen.Diff, tty: *zttio.Tty) RenderError!void {
     try tty.hideCursor();
     try tty.moveCursor(.home);
     try tty.stdout.writeAll(zttio.Styling.reset);
@@ -128,7 +128,7 @@ fn renderDiff(screen: *const Screen, diff: *const Screen.Diff, store: *const Scr
             jumped_cells = 0;
         }
 
-        switch (cell.content) {
+        switch (cell.content.tag) {
             .empty => {
                 jumped_cells += 1;
                 continue;
@@ -167,23 +167,26 @@ fn renderDiff(screen: *const Screen, diff: *const Screen.Diff, store: *const Scr
             cur_segment_handle = cell.segment;
         }
 
-        switch (cell.content) {
+        switch (cell.content.tag) {
             .empty,
             .wide_continuation,
             => unreachable,
 
-            .char => |c| {
-                try tty.stdout.writeByte(c);
+            .char => {
+                try tty.stdout.writeByte(cell.content.getChar());
             },
-            .short => |s| {
-                const end = std.mem.indexOf(u8, &s, &.{0}) orelse 11;
-                try tty.stdout.writeAll(s[0..end]);
+            .short => {
+                const buf = cell.content.getShort();
+                const end = std.mem.indexOf(u8, &buf, &.{0}) orelse 11;
+                try tty.stdout.writeAll(buf[0..end]);
             },
-            .long_local => |idx| {
+            .long_local => {
+                const idx = cell.content.getLongLocal();
                 const str = screen.getStr(idx);
                 try tty.stdout.writeAll(str);
             },
-            .long_shared => |handle| {
+            .long_shared => {
+                const handle = cell.content.getLongShared();
                 const str = store.getStr(handle);
                 try tty.stdout.writeAll(str);
             },
@@ -217,7 +220,7 @@ fn renderDirect(screen: *const Screen, store: *const ScreenStore, tty: *zttio.Tt
             next_wrap += screen.size.x;
         }
 
-        if (cell.content == .wide_continuation) {
+        if (cell.content.tag == .wide_continuation) {
             continue;
         }
 
@@ -246,22 +249,25 @@ fn renderDirect(screen: *const Screen, store: *const ScreenStore, tty: *zttio.Tt
             current_segment_handle = cell.segment;
         }
 
-        switch (cell.content) {
+        switch (cell.content.tag) {
             .empty => {
                 try tty.stdout.writeByte(' ');
             },
-            .char => |c| {
-                try tty.stdout.writeByte(c);
+            .char => {
+                try tty.stdout.writeByte(cell.content.getChar());
             },
-            .short => |s| {
-                const end = std.mem.indexOf(u8, &s, &.{0}) orelse 11;
-                try tty.stdout.writeAll(s[0..end]);
+            .short => {
+                const buf = cell.content.getShort();
+                const end = std.mem.indexOf(u8, &buf, &.{0}) orelse 11;
+                try tty.stdout.writeAll(buf[0..end]);
             },
-            .long_local => |idx| {
+            .long_local => {
+                const idx = cell.content.getLongLocal();
                 const str = screen.getStr(idx);
                 try tty.stdout.writeAll(str);
             },
-            .long_shared => |handle| {
+            .long_shared => {
+                const handle = cell.content.getLongShared();
                 const str = store.getStr(handle);
                 try tty.stdout.writeAll(str);
             },

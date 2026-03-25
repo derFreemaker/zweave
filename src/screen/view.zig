@@ -44,7 +44,7 @@ inline fn correctCellsFront(self: *const View, cell_idx: Cell.Index) void {
     if (cell_idx.value() <= 0) return;
 
     // If the cell we are going to override is not a 'wide_continuation' than do nothing.
-    if (self.screen.buf[cell_idx.value()].content != .wide_continuation) return;
+    if (self.screen.buf[cell_idx.value()].content.tag != .wide_continuation) return;
 
     const inlined_loops = 3;
     // we start at 1 since '0' would be the cell which gets overriden anyway.
@@ -52,7 +52,7 @@ inline fn correctCellsFront(self: *const View, cell_idx: Cell.Index) void {
         if (cell_idx.value() - i < 0) return;
 
         const cell: *Cell = &self.screen.buf[cell_idx.value() - i];
-        if (cell.content != .wide_continuation) {
+        if (cell.content.tag != .wide_continuation) {
             cell.content = .empty;
             return;
         }
@@ -63,7 +63,7 @@ inline fn correctCellsFront(self: *const View, cell_idx: Cell.Index) void {
     var i: isize = cell_idx.value() - inlined_loops;
     while (i >= 0) : (i -= 1) {
         const cell: *Cell = &self.screen.buf[@intCast(cell_idx.value() - i)];
-        if (cell.content != .wide_continuation) {
+        if (cell.content.tag != .wide_continuation) {
             cell.content = .empty;
             return;
         }
@@ -83,7 +83,7 @@ inline fn correctCellsEnd(self: *const View, cell_idx: Cell.Index) void {
         if (cell_idx.value() + i >= buf_len) return;
 
         const cell: *Cell = &self.screen.buf[cell_idx.value() + i];
-        if (cell.content != .wide_continuation) {
+        if (cell.content.tag != .wide_continuation) {
             return;
         }
 
@@ -93,8 +93,7 @@ inline fn correctCellsEnd(self: *const View, cell_idx: Cell.Index) void {
     var i: usize = cell_idx.value() + inlined_loops;
     while (i < buf_len) : (i += 1) {
         const cell: *Cell = &self.screen.buf[cell_idx.value() + i];
-        if (cell.content != .wide_continuation) {
-            @branchHint(.likely);
+        if (cell.content.tag != .wide_continuation) {
             return;
         }
 
@@ -243,7 +242,7 @@ pub fn fill(self: *const View, store: ?*const ScreenStore, row: u16, col: u16, h
 
         const end_idx = current_col_idx.increment(remainder);
         @memset(screen.buf[current_col_idx.value()..end_idx.value()], Cell{
-            .content = .{ .char = ' ' },
+            .content = .char(' '),
 
             .style = opts.style,
             .segment = opts.segment,
@@ -328,7 +327,7 @@ pub fn write(self: *const View, row: u16, col: u16, content: []const u8, opts: W
                     continue;
                 }
 
-                cell_content = .{ .char = c };
+                cell_content = .char(c);
             },
 
             2...Cell.shortStringMaxLength => {
@@ -337,12 +336,13 @@ pub fn write(self: *const View, row: u16, col: u16, content: []const u8, opts: W
                     continue;
                 }
 
-                cell_content = .{ .short = [Cell.shortStringMaxLength]u8{ 0, 0, 0 } };
-                @memcpy(cell_content.short[0..str.len], str);
-
+                var buf: [Cell.shortStringMaxLength]u8 = undefined;
+                @memcpy(buf[0..str.len], str);
                 if (str.len < Cell.shortStringMaxLength) {
-                    cell_content.short[str.len] = 0;
+                    buf[str.len] = 0;
                 }
+
+                cell_content = .short(buf);
             },
 
             else => {
@@ -352,7 +352,7 @@ pub fn write(self: *const View, row: u16, col: u16, content: []const u8, opts: W
                 }
 
                 const idx = try screen.addStr(str);
-                cell_content = .{ .long_local = idx };
+                cell_content = .long_local(idx);
             },
         }
 
@@ -400,11 +400,11 @@ pub fn projectView(self: *const View, other_view: *const View, row: u16, col: u1
         for (0..other_buf.len) |i| {
             self_buf[i] = other_buf[i];
 
-            if (other_buf[i].content == .long_local) {
-                const other_long_idx = other_buf[i].content.long_local;
+            if (other_buf[i].content.tag == .long_local) {
+                const other_long_idx = other_buf[i].content.getLongLocal();
 
                 const self_long_idx = try screen.addStr(other_view.screen.getStr(other_long_idx));
-                self_buf[i].content.long_local = self_long_idx;
+                self_buf[i].content = .long_local(self_long_idx);
             }
         }
     }

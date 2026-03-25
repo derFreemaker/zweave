@@ -138,8 +138,59 @@ pub fn getLayoutDataMut(self: *Tree, handle: Element.Handle) *LayoutData {
     return &self.layout_data[handle.index];
 }
 
-pub fn addChildren(self: *Tree, parent_handle: Element.Handle, children: []const Element.Handle) std.mem.Allocator.Error!void {
+pub const LayoutData = struct {
+    pub const zero = LayoutData{
+        .pos = .zero,
+        .size = .zero,
+    };
+
+    /// relative to parent element
+    pos: ScreenVec,
+
+    size: ScreenVec,
+};
+
+pub fn insertChildren(self: *Tree, parent_handle: Element.Handle, idx: usize, children: []const Element.Handle) void {
     std.debug.assert(self.isValid(parent_handle));
+    if (children.len == 0) return;
+
+    const parent = self.getMut(parent_handle);
+    var prev_child: Element.Handle = blk: {
+        var cur_child = if (!parent.first_child.isInvalid()) break :blk .invalid else parent.first_child;
+        for (0..idx) |_| {
+            cur_child = self.get(cur_child).next_sibling;
+            if (cur_child.isInvalid()) break :blk .invalid;
+        }
+        break :blk cur_child;
+    };
+    std.debug.assert(if (prev_child.isInvalid()) self.isValid(prev_child));
+
+    const next_child: Element.Handle = if (prev_child.isInvalid()) .invalid else self.get(prev_child).next_sibling;
+    std.debug.assert(if (next_child.isInvalid()) self.isValid(next_child));
+
+    for (children) |child_handle| {
+        std.debug.assert(self.isValid(child_handle));
+
+        const child = self.getMut(child_handle);
+        child.prev_sibling = prev_child;
+        prev_child = child_handle;
+    }
+
+    const last_child_handle = children[children.len - 1];
+    const last_child = self.getMut(last_child_handle);
+    last_child.next_sibling = next_child;
+
+    if (parent.first_child.isInvalid()) {
+        std.debug.assert(parent.last_child.isInvalid());
+
+        parent.first_child = children[0];
+        parent.last_child = last_child_handle;
+    }
+}
+
+pub fn addChildren(self: *Tree, parent_handle: Element.Handle, children: []const Element.Handle) void {
+    std.debug.assert(self.isValid(parent_handle));
+    if (children.len == 0) return;
 
     const parent = self.getMut(parent_handle);
     var cur_child_handle = parent.last_child;
@@ -216,6 +267,39 @@ pub fn childs(self: *const Tree, parent_handle: Element.Handle) ChildIterator {
     return ChildIterator.init(self, parent_handle);
 }
 
+pub const ChildIterator = struct {
+    tree: *const Tree,
+    parent_handle: Element.Handle,
+
+    next_child: Element.Handle,
+
+    pub fn init(tree: *const Tree, parent_handle: Element.Handle) ChildIterator {
+        return ChildIterator{
+            .tree = tree,
+            .parent_handle = parent_handle,
+            .next_child = tree.get(parent_handle).first_child,
+        };
+    }
+
+    pub fn peek(self: *const ChildIterator) ?Element.Handle {
+        return if (self.next_child.isInvalid()) return null else self.next_child;
+    }
+
+    pub fn toss(self: *ChildIterator) void {
+        self.next_child = self.tree.get(self.next_child).next_sibling;
+    }
+
+    pub fn count(self: *const ChildIterator) void {
+        var len: usize = 0;
+        var cur_child = self.tree.get(self.parent_handle).first_child;
+        while (!cur_child.isInvalid()) {
+            len += 1;
+            cur_child = self.tree.get(cur_child).next_sibling;
+        }
+        return len;
+    }
+};
+
 pub fn markDirty(self: *Tree, handle: Element.Handle) void {
     if (!self.isValid(handle)) return;
 
@@ -255,47 +339,3 @@ pub fn setFocus(self: *Tree, handle: Element.Handle) Element.EventError!void {
         .event = &.focus_in,
     });
 }
-
-pub const LayoutData = struct {
-    pub const zero = LayoutData{
-        .pos = .zero,
-        .size = .zero,
-    };
-
-    /// relative to parent element
-    pos: ScreenVec,
-    size: ScreenVec,
-};
-
-pub const ChildIterator = struct {
-    tree: *const Tree,
-    parent_handle: Element.Handle,
-
-    next_child: Element.Handle,
-
-    pub fn init(tree: *const Tree, parent_handle: Element.Handle) ChildIterator {
-        return ChildIterator{
-            .tree = tree,
-            .parent_handle = parent_handle,
-            .next_child = tree.get(parent_handle).first_child,
-        };
-    }
-
-    pub fn peek(self: *const ChildIterator) ?Element.Handle {
-        return if (self.next_child.isInvalid()) return null else self.next_child;
-    }
-
-    pub fn toss(self: *ChildIterator) void {
-        self.next_child = self.tree.get(self.next_child).next_sibling;
-    }
-
-    pub fn count(self: *const ChildIterator) void {
-        var len: usize = 0;
-        var cur_child = self.tree.get(self.parent_handle).first_child;
-        while (!cur_child.isInvalid()) {
-            len += 1;
-            cur_child = self.tree.get(cur_child).next_sibling;
-        }
-        return len;
-    }
-};

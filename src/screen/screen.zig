@@ -15,7 +15,7 @@ pub const CursorShape = zttio.ctlseqs.Cursor.Shape;
 
 const Screen = @This();
 
-pub const StrIndex = IndexT([]const u8, u24);
+pub const StrIndex = IndexT([]const u8, u32);
 
 allocator: std.mem.Allocator,
 
@@ -176,9 +176,9 @@ pub fn diff(self: *const Screen, other: *const Screen, out: *Diff) void {
         const cell = &out.buf[cell_diff.idx.value()];
         cell.* = cell_diff.cell.*;
 
-        switch (cell_diff.cell.content.tag) {
+        switch (cell_diff.cell.content) {
             .empty => {
-                cell.content = .char(' ');
+                cell.content = .{ .char = ' ' };
             },
             else => {},
         }
@@ -206,7 +206,7 @@ pub const ScreenDiffIterator = struct {
 
     pub fn next(self: *ScreenDiffIterator) ?CellDiff {
         while (self.idx.value() < self.end.value()) {
-            defer self.idx = self.idx.increment(1);
+            defer self.idx = self.idx.inc(1);
 
             const first = &self.first.buf[self.idx.value()];
             const second = &self.second.buf[self.idx.value()];

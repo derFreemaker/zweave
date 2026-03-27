@@ -128,7 +128,7 @@ fn renderDiff(screen: *const Screen, store: *const ScreenStore, diff: *const Scr
             jumped_cells = 0;
         }
 
-        switch (cell.content.tag) {
+        switch (cell.content) {
             .empty => {
                 jumped_cells += 1;
                 continue;
@@ -167,26 +167,22 @@ fn renderDiff(screen: *const Screen, store: *const ScreenStore, diff: *const Scr
             cur_segment_handle = cell.segment;
         }
 
-        switch (cell.content.tag) {
+        switch (cell.content) {
             .empty,
             .wide_continuation,
             => unreachable,
 
-            .char => {
-                try tty.stdout.writeByte(cell.content.getChar());
+            .char => |c| {
+                try tty.stdout.writeByte(c);
             },
             .short => {
-                const buf = cell.content.getShort();
-                const end = std.mem.indexOf(u8, &buf, &.{0}) orelse 11;
-                try tty.stdout.writeAll(buf[0..end]);
+                try tty.stdout.writeAll(cell.content.readShort());
             },
-            .long_local => {
-                const idx = cell.content.getLongLocal();
+            .long_local => |idx| {
                 const str = screen.getStr(idx);
                 try tty.stdout.writeAll(str);
             },
-            .long_shared => {
-                const handle = cell.content.getLongShared();
+            .long_shared => |handle| {
                 const str = store.getStr(handle);
                 try tty.stdout.writeAll(str);
             },
@@ -220,7 +216,7 @@ fn renderDirect(screen: *const Screen, store: *const ScreenStore, tty: *zttio.Tt
             next_wrap += screen.size.x;
         }
 
-        if (cell.content.tag == .wide_continuation) {
+        if (cell.content == .wide_continuation) {
             continue;
         }
 
@@ -249,25 +245,21 @@ fn renderDirect(screen: *const Screen, store: *const ScreenStore, tty: *zttio.Tt
             current_segment_handle = cell.segment;
         }
 
-        switch (cell.content.tag) {
+        switch (cell.content) {
             .empty => {
                 try tty.stdout.writeByte(' ');
             },
-            .char => {
-                try tty.stdout.writeByte(cell.content.getChar());
+            .char => |c| {
+                try tty.stdout.writeByte(c);
             },
             .short => {
-                const buf = cell.content.getShort();
-                const end = std.mem.indexOf(u8, &buf, &.{0}) orelse 11;
-                try tty.stdout.writeAll(buf[0..end]);
+                try tty.stdout.writeAll(cell.content.readShort());
             },
-            .long_local => {
-                const idx = cell.content.getLongLocal();
+            .long_local => |idx| {
                 const str = screen.getStr(idx);
                 try tty.stdout.writeAll(str);
             },
-            .long_shared => {
-                const handle = cell.content.getLongShared();
+            .long_shared => |handle| {
                 const str = store.getStr(handle);
                 try tty.stdout.writeAll(str);
             },

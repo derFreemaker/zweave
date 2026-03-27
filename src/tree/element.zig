@@ -10,7 +10,7 @@ const ScreenView = @import("../screen/view.zig");
 const ScreenStore = @import("../screen/screen_store.zig");
 const Event = @import("../event.zig").Event;
 
-pub const HandleStore = Handles.HandleStoreT(Element, u16, .buildSafety);
+pub const HandleStore = Handles.HandleStoreT(Element, u16);
 pub const Handle = HandleStore.Handle;
 
 const Element = @This();

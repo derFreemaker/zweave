@@ -1,18 +1,15 @@
 const std = @import("std");
 const builtin = @import("builtin");
 
-pub fn HandleStoreT(comptime ParentT: type, comptime T: type, comptime safety: HandleSafety) type {
-    if (@typeInfo(T) != .int) @compileError("expected T of type 'int' found: " ++ @typeName(T));
-    if (@typeInfo(T).int.bits < 2) @compileError("expected T to have more than 1 or less bits: " ++ @typeName(T));
+const buildingSafe = builtin.mode == .Debug or builtin.mode == .ReleaseSafe;
 
-    const buildingSafe = switch (safety) {
-        .buildSafety => builtin.mode == .Debug or builtin.mode == .ReleaseSafe,
-        .safe => true,
-        .unsafe => false,
-    };
+/// The maximum value of the given type is used for representing an invalid handle.
+pub fn HandleStoreT(comptime ParentT: type, comptime T: type) type {
+    if (@typeInfo(T) != .int) @compileError("expected T of type 'int' found: " ++ @typeName(T));
+    if (@typeInfo(T).int.bits <= 1) @compileError("expected T to have more than 1 bit: " ++ @typeName(T));
 
     return struct {
-        pub const Handle = HandleT(ParentT, T, safety);
+        pub const Handle = HandleT(ParentT, T);
 
         const Self = @This();
 
@@ -105,22 +102,16 @@ pub fn HandleStoreT(comptime ParentT: type, comptime T: type, comptime safety: H
     };
 }
 
-pub fn HandleT(comptime ParentT: type, comptime T: type, comptime safety: HandleSafety) type {
-    // we only need the parent type for uniques
+/// The maximum value of the given type is used for representing an invalid handle.
+pub fn HandleT(comptime ParentT: type, comptime T: type) type {
+    // we only need the parent type for better identification
     _ = ParentT;
 
     if (@typeInfo(T) != .int) @compileError("expected T of type 'int' found: " ++ @typeName(T));
     if (@typeInfo(T).int.bits <= 1) @compileError("expected T to have more than 1 bit: " ++ @typeName(T));
 
-    const buildingSafe = switch (safety) {
-        .buildSafety => builtin.mode == .Debug or builtin.mode == .ReleaseSafe,
-        .safe => true,
-        .unsafe => false,
-    };
-
     return packed struct {
         pub const UnderlyingT = T;
-        pub const Safety = safety;
 
         const Self = @This();
 
@@ -143,9 +134,3 @@ pub fn HandleT(comptime ParentT: type, comptime T: type, comptime safety: Handle
         }
     };
 }
-
-pub const HandleSafety = enum {
-    buildSafety,
-    safe,
-    unsafe,
-};

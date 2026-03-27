@@ -1,5 +1,6 @@
 const std = @import("std");
 
+/// The maximum value of the given type is used for representing an invalid index.
 pub fn IndexT(comptime ParentT: type, comptime T: type) type {
     // we only need the parent type for uniques
     _ = ParentT;
@@ -24,19 +25,11 @@ pub fn IndexT(comptime ParentT: type, comptime T: type) type {
             return @intFromEnum(self);
         }
 
-        pub inline fn prev(self: Self) Self {
-            return Self.from(self.value() - 1);
-        }
-
-        pub inline fn next(self: Self) Self {
-            return Self.from(self.value() + 1);
-        }
-
-        pub inline fn decrement(self: Self, n: T) Self {
+        pub inline fn dec(self: Self, n: T) Self {
             return Self.from(self.value() - n);
         }
 
-        pub inline fn increment(self: Self, n: T) Self {
+        pub inline fn inc(self: Self, n: T) Self {
             return Self.from(self.value() + n);
         }
     };

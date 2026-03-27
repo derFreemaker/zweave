@@ -6,13 +6,13 @@ const Segment = @import("segment.zig");
 
 const ScreenStore = @This();
 
-const StrStore = Handles.HandleStoreT([]const u8, u24, .unsafe);
+const StrStore = Handles.HandleStoreT([]const u8, u32);
 pub const StrHandle = StrStore.Handle;
 
-const StyleStore = Handles.HandleStoreT(Style, u16, .unsafe);
+const StyleStore = Handles.HandleStoreT(Style, u32);
 pub const StyleHandle = StyleStore.Handle;
 
-const SegmentStore = Handles.HandleStoreT(Segment, u16, .unsafe);
+const SegmentStore = Handles.HandleStoreT(Segment, u32);
 pub const SegmentHandle = SegmentStore.Handle;
 
 allocator: std.mem.Allocator,

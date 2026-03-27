@@ -31,7 +31,8 @@ root: Element.Handle,
 show_stats: bool,
 stats_style: ScreenStore.StyleHandle,
 
-prev_frame_time: i64,
+prev_frame_render_time: i64,
+prev_frame_flush_time: i64,
 
 pub const InitError = error{UnableToInitTty} || std.mem.Allocator.Error;
 
@@ -71,7 +72,8 @@ pub fn init_(self: *Engine, allocator: std.mem.Allocator, event_allocator: std.m
     });
     errdefer self.screen_store.removeStyle(self.stats_style);
 
-    self.prev_frame_time = 0;
+    self.prev_frame_render_time = 0;
+    self.prev_frame_flush_time = 0;
 }
 
 pub fn deinit(self: *Engine) void {
@@ -129,7 +131,7 @@ pub fn renderNextFrame(self: *Engine) Renderer.RenderError!void {
     });
     defer trace_zone.end();
 
-    const start = std.time.microTimestamp();
+    const start_render = std.time.microTimestamp();
 
     _ = self.arena.reset(.{ .retain_with_limit = 8 * 1024 * 1024 });
     var trace_allocator = tracy.Allocator{
@@ -213,14 +215,19 @@ pub fn renderNextFrame(self: *Engine) Renderer.RenderError!void {
             try writer.writeByte('\n');
         }
 
-        _ = try writer.print("prev Frame Time: {d}µs\n", .{self.prev_frame_time});
+        _ = try writer.print("prev Frame Time: {d}µs - {d}µs\n", .{ self.prev_frame_render_time, self.prev_frame_flush_time });
 
         try writer.flush();
     }
 
     try self.renderer.render(&self.screen_store, self.tty);
 
+    const end_render = std.time.microTimestamp();
+    self.prev_frame_render_time = end_render - start_render;
+
     {
+        const start_flush = std.time.microTimestamp();
+
         const flush_trace_zone = tracy.Zone.begin(.{
             .name = "[Engine]: flush to terminal",
             .src = @src(),
@@ -228,8 +235,8 @@ pub fn renderNextFrame(self: *Engine) Renderer.RenderError!void {
         defer flush_trace_zone.end();
 
         try self.tty.flush();
-    }
 
-    const end = std.time.microTimestamp();
-    self.prev_frame_time = end - start;
+        const end_flush = std.time.microTimestamp();
+        self.prev_frame_flush_time = end_flush - start_flush;
+    }
 }

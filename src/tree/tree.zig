@@ -156,6 +156,8 @@ pub fn insertChildren(self: *Tree, parent_handle: Element.Handle, idx: usize, ch
 
     const parent = self.getMut(parent_handle);
     var prev_child: Element.Handle = blk: {
+        if (idx == 0) break :blk .invalid;
+
         var cur_child = if (!parent.first_child.isInvalid()) break :blk .invalid else parent.first_child;
         for (0..idx) |_| {
             cur_child = self.get(cur_child).next_sibling;
@@ -163,10 +165,10 @@ pub fn insertChildren(self: *Tree, parent_handle: Element.Handle, idx: usize, ch
         }
         break :blk cur_child;
     };
-    std.debug.assert(if (prev_child.isInvalid()) self.isValid(prev_child));
+    std.debug.assert(prev_child.isInvalid() or self.isValid(prev_child));
 
     const next_child: Element.Handle = if (prev_child.isInvalid()) .invalid else self.get(prev_child).next_sibling;
-    std.debug.assert(if (next_child.isInvalid()) self.isValid(next_child));
+    std.debug.assert(next_child.isInvalid() or self.isValid(next_child));
 
     for (children) |child_handle| {
         std.debug.assert(self.isValid(child_handle));

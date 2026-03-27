@@ -68,7 +68,7 @@ const Block = struct {
             .screen_store = ctx.screen_store,
         });
 
-        view.fill(ctx.screen_store, 0, 0, view.size.y, @divFloor(view.size.x, 2), .long_shared(self.content_handle), .{
+        view.fill(ctx.screen_store, 0, 0, view.size.y, @divFloor(view.size.x, 2), .{ .long_shared = self.content_handle }, .{
             .style = self.style,
         });
 
@@ -150,7 +150,8 @@ pub fn main() !u8 {
     const input_handle = try engine.tree.create(input.element());
     defer engine.tree.destroy(input_handle);
 
-    engine.tree.addChildren(engine.root, &.{ block_handle, screen_handle, input_handle });
+    engine.tree.addChildren(engine.root, &.{ screen_handle, input_handle });
+    engine.tree.insertChildren(engine.root, 0, &.{block_handle});
 
     while (true) {
         var event = engine.tty.nextEvent();

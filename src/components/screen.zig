@@ -8,7 +8,7 @@ const UnderlyingScreen = @import("../screen/screen.zig");
 const ScreenView = @import("../screen/view.zig");
 const ScreenStore = @import("../screen/screen_store.zig");
 const Element = @import("../tree/element.zig");
-const LayoutConstraints = @import("../tree/layout_constraints.zig");
+const LayoutConstraints = @import("../layout/layout_constraints.zig");
 
 const Screen = @import("screen.zig");
 

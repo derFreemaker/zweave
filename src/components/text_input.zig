@@ -2,7 +2,7 @@ const std = @import("std");
 const tracy = @import("tracy");
 
 const Element = @import("../tree/element.zig");
-const LayoutConstraints = @import("../tree/layout_constraints.zig");
+const LayoutConstraints = @import("../layout/layout_constraints.zig");
 const GraphemeGapBuffer = @import("../common/grapheme_gap_buffer.zig");
 const LineIterator = @import("../common/line_iterator.zig");
 

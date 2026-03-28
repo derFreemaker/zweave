@@ -1,7 +1,7 @@
 const std = @import("std");
 
-const Element = @import("element.zig");
-const Tree = @import("tree.zig");
+const Element = @import("../tree/element.zig");
+const Tree = @import("../tree/tree.zig");
 
 const LayoutConstraint = @This();
 

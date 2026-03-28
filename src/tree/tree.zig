@@ -1,7 +1,7 @@
 const std = @import("std");
 
 const ScreenVec = @import("../common/screen_vec.zig");
-const LayoutConstraints = @import("layout_constraints.zig");
+const LayoutConstraints = @import("../layout/layout_constraints.zig");
 const Element = @import("element.zig");
 const Event = @import("../event.zig").Event;
 

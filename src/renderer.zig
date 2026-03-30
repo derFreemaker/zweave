@@ -53,7 +53,7 @@ pub inline fn getScreen(self: *const Renderer) *Screen {
     return self.next;
 }
 
-pub fn prepareNextFrameScreen(self: *Renderer) *Screen {
+pub fn prepareNextFrameScreen(self: *Renderer) void {
     const trace_zone = tracy.Zone.begin(.{
         .name = "[Renderer]: prepare next frame screen",
         .src = @src(),
@@ -64,8 +64,6 @@ pub fn prepareNextFrameScreen(self: *Renderer) *Screen {
     if (!self.redraw) {
         self.diff.clear();
     }
-
-    return self.getScreen();
 }
 
 pub fn resize(self: *Renderer, new_size: ScreenVec) std.mem.Allocator.Error!void {

@@ -43,12 +43,21 @@ pub fn deinit(self: *Screen, allocator: std.mem.Allocator) void {
 
 pub fn element(self: *Screen) Element.Interface {
     return Element.Interface{ .ptr = self, .vtable = &Element.Interface.VTable{
+        .getDebugId = getDebugId,
+
         .getLayoutConstraints = getLayoutConstraints,
         .draw = draw,
     } };
 }
 
-pub fn getLayoutConstraints(self_ptr: *anyopaque, ctx: *const Element.GetLayoutConstraintsContext) Element.GetLayoutConstraintsError!LayoutConstraints {
+fn getDebugId(self_ptr: *anyopaque, ctx: *const Element.GetDebugIdContext) Element.GetDebugIdError![]const u8 {
+    const self: *Screen = @ptrCast(@alignCast(self_ptr));
+
+    const screen_size = self.view.screen.size;
+    return std.fmt.allocPrint(ctx.allocator, "<Screen> {d}x{d}", .{ screen_size.x, screen_size.y });
+}
+
+fn getLayoutConstraints(self_ptr: *anyopaque, ctx: *const Element.GetLayoutConstraintsContext) Element.GetLayoutConstraintsError!LayoutConstraints {
     const self: *Screen = @ptrCast(@alignCast(self_ptr));
     _ = ctx;
 
@@ -58,7 +67,7 @@ pub fn getLayoutConstraints(self_ptr: *anyopaque, ctx: *const Element.GetLayoutC
     };
 }
 
-pub fn draw(self_ptr: *anyopaque, ctx: *const Element.DrawContext) Element.DrawError!void {
+fn draw(self_ptr: *anyopaque, ctx: *const Element.DrawContext) Element.DrawError!void {
     const self: *Screen = @ptrCast(@alignCast(self_ptr));
 
     try ctx.view.projectView(&self.view, 0, 0);

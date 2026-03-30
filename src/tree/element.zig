@@ -17,6 +17,7 @@ const Element = @This();
 
 pub const Interface = struct {
     pub const VTable = struct {
+        getDebugId: *const fn (self_ptr: *anyopaque, ctx: *const GetDebugIdContext) GetDebugIdError![]const u8 = getElementIndexAsDebugId,
         register: ?*const fn (self_ptr: *anyopaque, ctx: *const RegisterContext) RegisterError!void = null,
 
         getLayoutConstraints: *const fn (self_ptr: *anyopaque, ctx: *const GetLayoutConstraintsContext) GetLayoutConstraintsError!LayoutConstraints,
@@ -28,6 +29,10 @@ pub const Interface = struct {
 
     ptr: *anyopaque,
     vtable: *const VTable,
+
+    pub inline fn getDebugId(self: Interface, ctx: *const GetDebugIdContext) GetDebugIdError![]const u8 {
+        return self.vtable.getDebugId(self.ptr, ctx);
+    }
 
     pub inline fn hasRegister(self: Interface) bool {
         return self.vtable.register != null;
@@ -75,12 +80,37 @@ last_child: Handle = .invalid,
 isDirty: bool = true,
 childIsDirty: bool = false,
 
+pub const GetDebugIdError = std.mem.Allocator.Error;
+
+pub const GetDebugIdContext = struct {
+    const Context = @This();
+
+    allocator: std.mem.Allocator,
+    tree: *const Tree,
+
+    handle: Element.Handle,
+
+    pub inline fn getElement(self: *const Context) *const Element {
+        return self.tree.get(self.handle);
+    }
+
+    pub inline fn getElementMut(self: *const Context) *Element {
+        return self.tree.getMut(self.handle);
+    }
+};
+
+fn getElementIndexAsDebugId(self_ptr: *anyopaque, ctx: *const GetDebugIdContext) GetDebugIdError![]const u8 {
+    _ = self_ptr;
+    return try std.fmt.allocPrint(ctx.allocator, "e{d}", .{ctx.handle.index});
+}
+
 pub const RegisterError = std.mem.Allocator.Error;
 
 pub const RegisterContext = struct {
     const Context = @This();
 
     tree: *Tree,
+
     handle: Element.Handle,
 
     pub inline fn getElement(self: *const Context) *const Element {
@@ -99,9 +129,10 @@ pub const GetLayoutConstraintsContext = struct {
 
     allocator: std.mem.Allocator,
     tree: *const Tree,
-    width_method: Unicode.WidthMethod,
 
     handle: Element.Handle,
+
+    width_method: Unicode.WidthMethod,
 
     pub inline fn strWidth(self: *const Context, str: []const u8) usize {
         return Unicode.strWidth(str, self.width_method);
@@ -119,10 +150,10 @@ pub const CalcLayoutContext = struct {
 
     allocator: std.mem.Allocator,
     tree: *Tree,
-    width_method: Unicode.WidthMethod,
 
     handle: Element.Handle,
 
+    width_method: Unicode.WidthMethod,
     available: ScreenVec,
 
     pub inline fn strWidth(self: *const Context, str: []const u8) usize {

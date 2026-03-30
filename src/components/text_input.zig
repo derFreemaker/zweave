@@ -24,6 +24,8 @@ pub fn deinit(self: *TextInput) void {
 
 pub fn element(self: *TextInput) Element.Interface {
     return Element.Interface{ .ptr = self, .vtable = &Element.Interface.VTable{
+        .getDebugId = getDebugId,
+
         .getLayoutConstraints = getLayoutConstraints,
         .draw = draw,
 
@@ -31,7 +33,13 @@ pub fn element(self: *TextInput) Element.Interface {
     } };
 }
 
-pub fn getLayoutConstraints(self_ptr: *anyopaque, ctx: *const Element.GetLayoutConstraintsContext) Element.GetLayoutConstraintsError!LayoutConstraints {
+fn getDebugId(self_ptr: *anyopaque, ctx: *const Element.GetDebugIdContext) Element.GetDebugIdError![]const u8 {
+    _ = self_ptr;
+    _ = ctx;
+    return "<TextInput>";
+}
+
+fn getLayoutConstraints(self_ptr: *anyopaque, ctx: *const Element.GetLayoutConstraintsContext) Element.GetLayoutConstraintsError!LayoutConstraints {
     const trace_zone = tracy.Zone.begin(.{
         .name = "[TextInput]: getLayoutConstraints",
         .src = @src(),
@@ -83,7 +91,7 @@ pub fn getLayoutConstraints(self_ptr: *anyopaque, ctx: *const Element.GetLayoutC
     };
 }
 
-pub fn draw(self_ptr: *anyopaque, ctx: *const Element.DrawContext) Element.DrawError!void {
+fn draw(self_ptr: *anyopaque, ctx: *const Element.DrawContext) Element.DrawError!void {
     const trace_zone = tracy.Zone.begin(.{
         .name = "[TextInput]: draw",
         .src = @src(),
@@ -114,7 +122,7 @@ pub fn draw(self_ptr: *anyopaque, ctx: *const Element.DrawContext) Element.DrawE
     try writer.flush();
 }
 
-pub fn onEvent(self_ptr: *anyopaque, ctx: *const Element.EventContext) Element.EventError!void {
+fn onEvent(self_ptr: *anyopaque, ctx: *const Element.EventContext) Element.EventError!void {
     const self: *TextInput = @ptrCast(@alignCast(self_ptr));
 
     switch (ctx.event.*) {

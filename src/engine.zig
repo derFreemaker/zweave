@@ -28,8 +28,9 @@ renderer: Renderer,
 root_container: Container,
 root: Element.Handle,
 
-show_stats: bool,
 stats_style: ScreenStore.StyleHandle,
+show_stats: bool,
+show_debug_tree: bool,
 
 prev_frame_render_time: i64,
 prev_frame_flush_time: i64,
@@ -65,12 +66,13 @@ pub fn init_(self: *Engine, allocator: std.mem.Allocator, event_allocator: std.m
     self.root = try self.tree.create(self.root_container.element());
     errdefer self.tree.destroy(self.root);
 
-    self.show_stats = false;
     self.stats_style = try self.screen_store.addStyle(Style{
         .background = .{ .c8 = .black },
         .foreground = .{ .c8 = .bright_green },
     });
     errdefer self.screen_store.removeStyle(self.stats_style);
+    self.show_stats = false;
+    self.show_debug_tree = false;
 
     self.prev_frame_render_time = 0;
     self.prev_frame_flush_time = 0;
@@ -87,6 +89,24 @@ pub fn deinit(self: *Engine) void {
 
 pub inline fn resize(self: *Engine, new_size: ScreenVec) std.mem.Allocator.Error!void {
     return self.renderer.resize(new_size);
+}
+
+/// if `value` is `null`, it toggles
+pub fn showStats(self: *Engine, value: ?bool) void {
+    if (value) |v| {
+        self.show_stats = v;
+    } else {
+        self.show_stats = !self.show_stats;
+    }
+}
+
+/// if `value` is `null`, it toggles
+pub fn showDebugTree(self: *Engine, value: ?bool) void {
+    if (value) |v| {
+        self.show_debug_tree = v;
+    } else {
+        self.show_debug_tree = !self.show_debug_tree;
+    }
 }
 
 pub fn dispatchEventToFocusedElement(self: *Engine, event: Event) std.mem.Allocator.Error!void {
@@ -140,7 +160,8 @@ pub fn renderNextFrame(self: *Engine) Renderer.RenderError!void {
     };
     const allocator = trace_allocator.allocator();
 
-    var screen = self.renderer.prepareNextFrameScreen();
+    self.renderer.prepareNextFrameScreen();
+    var screen = self.renderer.getScreen();
 
     const root = self.tree.get(self.root);
     const needed_space = try self.computeLayout(allocator, screen, root);
@@ -169,55 +190,12 @@ pub fn renderNextFrame(self: *Engine) Renderer.RenderError!void {
         });
     }
 
-    const stats_view = screen.view(.{
-        .col = 0,
-        .row = 0,
-
-        .default_style = self.stats_style,
-    });
-
     if (self.show_stats) {
-        const stats_trace_zone = tracy.Zone.begin(.{
-            .name = "[Engine]: stats write",
-            .src = @src(),
-        });
-        defer stats_trace_zone.end();
+        try self.writeStats();
+    }
 
-        var stats_buf: [128]u8 = undefined;
-        var stats_writer = stats_view.writer(&stats_buf);
-        const writer = &stats_writer.writer;
-
-        try writer.print("Screen: {d}x{d} -> {d}c\n", .{
-            screen.size.x,
-            screen.size.y,
-            screen.buf.len,
-        });
-
-        {
-            _ = try writer.write("Memory Usage:");
-
-            _ = try writer.write(" Tree-");
-            try self.tree_allocator.prettyPrintBytesUsed(writer);
-
-            _ = try writer.write(" Render-");
-            try self.render_allocator.prettyPrintBytesUsed(writer);
-
-            try writer.writeByte('\n');
-        }
-
-        {
-            _ = try writer.write("Memory Capacity:");
-
-            try writer.print(" DrawLoop-{d:.1}kB", .{
-                @as(f64, @floatFromInt(self.arena.queryCapacity())) / 1024,
-            });
-
-            try writer.writeByte('\n');
-        }
-
-        _ = try writer.print("prev Frame Time: {d}µs - {d}µs\n", .{ self.prev_frame_render_time, self.prev_frame_flush_time });
-
-        try writer.flush();
+    if (self.show_debug_tree) {
+        try self.writeDebugTree();
     }
 
     try self.renderer.render(&self.screen_store, self.tty);
@@ -239,4 +217,83 @@ pub fn renderNextFrame(self: *Engine) Renderer.RenderError!void {
         const end_flush = std.time.microTimestamp();
         self.prev_frame_flush_time = end_flush - start_flush;
     }
+}
+
+fn writeStats(self: *const Engine) std.Io.Writer.Error!void {
+    const stats_trace_zone = tracy.Zone.begin(.{
+        .name = "[Engine]: stats write",
+        .src = @src(),
+    });
+    defer stats_trace_zone.end();
+
+    const screen = self.renderer.getScreen();
+
+    const stats_view = screen.view(.{
+        .col = 0,
+        .row = 0,
+
+        .default_style = self.stats_style,
+    });
+
+    var stats_buf: [128]u8 = undefined;
+    var stats_writer = stats_view.writer(&stats_buf);
+    const writer = &stats_writer.writer;
+
+    try writer.print("Screen: {d}x{d} -> {d}c\n", .{
+        screen.size.x,
+        screen.size.y,
+        screen.buf.len,
+    });
+
+    {
+        _ = try writer.write("Memory Usage:");
+
+        _ = try writer.write(" Tree-");
+        try self.tree_allocator.prettyPrintBytesUsed(writer);
+
+        _ = try writer.write(" Render-");
+        try self.render_allocator.prettyPrintBytesUsed(writer);
+
+        try writer.writeByte('\n');
+    }
+
+    {
+        _ = try writer.write("Memory Capacity:");
+
+        try writer.print(" DrawLoop-{d:.1}kB", .{
+            @as(f64, @floatFromInt(self.arena.queryCapacity())) / 1024,
+        });
+
+        try writer.writeByte('\n');
+    }
+
+    _ = try writer.print("prev Frame Time: {d}µs - {d}µs\n", .{ self.prev_frame_render_time, self.prev_frame_flush_time });
+
+    try writer.flush();
+}
+
+fn writeDebugTree(self: *const Engine) std.Io.Writer.Error!void {
+    const stats_trace_zone = tracy.Zone.begin(.{
+        .name = "[Engine]: write debug tree",
+        .src = @src(),
+    });
+    defer stats_trace_zone.end();
+
+    const screen = self.renderer.getScreen();
+
+    const stats_view = screen.view(.{
+        .col = 0,
+        .row = 0,
+
+        .default_style = self.stats_style,
+    });
+
+    var stats_buf: [128]u8 = undefined;
+    var stats_writer = stats_view.writer(&stats_buf);
+    const writer = &stats_writer.writer;
+
+    try writer.writeAll("<root>\n");
+    try self.tree.writeDebugElementTree(writer, self.root, 1);
+
+    try writer.flush();
 }

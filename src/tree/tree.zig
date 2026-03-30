@@ -174,6 +174,8 @@ pub fn insertChildren(self: *Tree, parent_handle: Element.Handle, idx: usize, ch
         std.debug.assert(self.isValid(child_handle));
 
         const child = self.getMut(child_handle);
+        std.debug.assert(child.parent.isInvalid());
+
         child.prev_sibling = prev_child;
         prev_child = child_handle;
     }
@@ -302,6 +304,19 @@ pub const ChildIterator = struct {
     }
 };
 
+pub fn countChilds(self: *const Tree, handle: Element.Handle) usize {
+    std.debug.assert(self.isValid(handle));
+    const element = self.get(handle);
+
+    var count: usize = 0;
+    var cur_child_handle = element.first_child;
+    while (!cur_child_handle.isInvalid()) : (count += 1) {
+        cur_child_handle = self.get(cur_child_handle).next_sibling;
+    }
+
+    return count;
+}
+
 pub fn markDirty(self: *Tree, handle: Element.Handle) void {
     if (!self.isValid(handle)) return;
 
@@ -340,4 +355,38 @@ pub fn setFocus(self: *Tree, handle: Element.Handle) Element.EventError!void {
 
         .event = &.focus_in,
     });
+}
+
+pub fn writeDebugElementTree(self: *const Tree, writer: *std.Io.Writer, handle: Element.Handle, ident: ?u16) std.Io.Writer.Error!void {
+    var buf: [256]u8 = undefined;
+    var fixed_allocator = std.heap.FixedBufferAllocator.init(&buf);
+
+    return self.writeDebugTreeElementInternal(&fixed_allocator, writer, handle, ident orelse 0);
+}
+
+fn writeDebugTreeElementInternal(self: *const Tree, fixed_allocator: *std.heap.FixedBufferAllocator, writer: *std.Io.Writer, handle: Element.Handle, ident: u16) std.Io.Writer.Error!void {
+    std.debug.assert(self.isValid(handle));
+    const allocator = fixed_allocator.allocator();
+
+    var child_iter = self.childs(handle);
+    while (child_iter.peek()) |child_handle| : (child_iter.toss()) {
+        const child = self.get(child_handle);
+
+        // there has to be a better way
+        for (0..ident) |_| {
+            try writer.writeAll("    ");
+        }
+
+        const child_id = child.interface.getDebugId(&Element.GetDebugIdContext{
+            .allocator = allocator,
+            .tree = self,
+
+            .handle = child_handle,
+        }) catch return error.WriteFailed;
+        try writer.writeAll(child_id);
+        try writer.writeByte('\n');
+        fixed_allocator.reset();
+
+        try self.writeDebugTreeElementInternal(fixed_allocator, writer, child_handle, ident + 1);
+    }
 }

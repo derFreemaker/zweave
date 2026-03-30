@@ -150,6 +150,7 @@ pub fn main() !u8 {
     const input_handle = try engine.tree.create(input.element());
     defer engine.tree.destroy(input_handle);
 
+    // engine.tree.addChildren(engine.root, &.{ block_handle, screen_handle, input_handle });
     engine.tree.addChildren(engine.root, &.{ screen_handle, input_handle });
     engine.tree.insertChildren(engine.root, 0, &.{block_handle});
 
@@ -172,8 +173,11 @@ pub fn main() !u8 {
                     break;
                 } else if (key_press.matches(.f1, .{})) {
                     consumed = true;
-                    engine.show_stats = !engine.show_stats;
+                    engine.showStats(null);
                 } else if (key_press.matches(.f2, .{})) {
+                    consumed = true;
+                    engine.showDebugTree(null);
+                } else if (key_press.matches(.f3, .{})) {
                     consumed = true;
                     if (engine.tree.isFocused(input_handle)) {
                         try engine.tree.setFocus(block_handle);

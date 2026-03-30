@@ -13,13 +13,21 @@ pub fn init() Container {
 
 pub fn element(self: *Container) Element.Interface {
     return .{ .ptr = self, .vtable = &.{
+        .getDebugId = getDebugId,
+
         .getLayoutConstraints = getLayoutConstraints,
         .computeLayout = computeLayout,
         .draw = draw,
     } };
 }
 
-pub fn getLayoutConstraints(self_ptr: *anyopaque, ctx: *const Element.GetLayoutConstraintsContext) Element.GetLayoutConstraintsError!LayoutConstraints {
+fn getDebugId(self_ptr: *anyopaque, ctx: *const Element.GetDebugIdContext) Element.GetDebugIdError![]const u8 {
+    _ = self_ptr;
+
+    return std.fmt.allocPrint(ctx.allocator, "<Container> {d}", .{ctx.tree.countChilds(ctx.handle)});
+}
+
+fn getLayoutConstraints(self_ptr: *anyopaque, ctx: *const Element.GetLayoutConstraintsContext) Element.GetLayoutConstraintsError!LayoutConstraints {
     _ = self_ptr;
     _ = ctx;
 
@@ -29,7 +37,7 @@ pub fn getLayoutConstraints(self_ptr: *anyopaque, ctx: *const Element.GetLayoutC
     };
 }
 
-pub fn computeLayout(self_ptr: *anyopaque, ctx: *const Element.CalcLayoutContext) Element.CalcLayoutError!ScreenVec {
+fn computeLayout(self_ptr: *anyopaque, ctx: *const Element.CalcLayoutContext) Element.CalcLayoutError!ScreenVec {
     const trace_zone = tracy.Zone.begin(.{
         .name = "[Container]: computeLayout",
         .src = @src(),
@@ -98,7 +106,7 @@ pub fn computeLayout(self_ptr: *anyopaque, ctx: *const Element.CalcLayoutContext
     return ctx.available;
 }
 
-pub fn draw(self_ptr: *anyopaque, ctx: *const Element.DrawContext) Element.DrawError!void {
+fn draw(self_ptr: *anyopaque, ctx: *const Element.DrawContext) Element.DrawError!void {
     const trace_zone = tracy.Zone.begin(.{
         .name = "[Container]: draw",
         .src = @src(),

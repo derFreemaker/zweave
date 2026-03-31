@@ -167,8 +167,8 @@ pub fn insertChildren(self: *Tree, parent_handle: Element.Handle, idx: usize, ch
     };
     std.debug.assert(prev_child.isInvalid() or self.isValid(prev_child));
 
-    const next_child: Element.Handle = if (prev_child.isInvalid()) .invalid else self.get(prev_child).next_sibling;
-    std.debug.assert(next_child.isInvalid() or self.isValid(next_child));
+    const next_child_handle: Element.Handle = if (prev_child.isInvalid()) parent.first_child else self.get(prev_child).next_sibling;
+    std.debug.assert(next_child_handle.isInvalid() or self.isValid(next_child_handle));
 
     for (children) |child_handle| {
         std.debug.assert(self.isValid(child_handle));
@@ -182,12 +182,14 @@ pub fn insertChildren(self: *Tree, parent_handle: Element.Handle, idx: usize, ch
 
     const last_child_handle = children[children.len - 1];
     const last_child = self.getMut(last_child_handle);
-    last_child.next_sibling = next_child;
+    last_child.next_sibling = next_child_handle;
 
-    if (parent.first_child.isInvalid()) {
-        std.debug.assert(parent.last_child.isInvalid());
+    const next_child = self.getMut(next_child_handle);
+    next_child.prev_sibling = last_child_handle;
 
+    if (idx == 0 or parent.first_child.isInvalid()) {
         parent.first_child = children[0];
+    } else if (next_child_handle.isInvalid()) {
         parent.last_child = last_child_handle;
     }
 }

@@ -165,27 +165,22 @@ pub fn main() !u8 {
         });
         defer trace_zone.end();
 
-        var consumed = false;
+        var consumed = true;
         switch (event) {
             .key_press => |key_press| {
                 if (key_press.matches(.from('c'), .{ .ctrl = true })) {
-                    consumed = true;
                     break;
                 } else if (key_press.matches(.f1, .{})) {
-                    consumed = true;
                     engine.showStats(null);
                 } else if (key_press.matches(.f2, .{})) {
-                    consumed = true;
                     engine.showDebugTree(null);
                 } else if (key_press.matches(.f3, .{})) {
-                    consumed = true;
                     if (engine.tree.isFocused(input_handle)) {
                         try engine.tree.setFocus(block_handle);
                     } else {
                         try engine.tree.setFocus(input_handle);
                     }
                 } else if (key_press.matches(.enter, .{})) {
-                    consumed = true;
                     if (engine.tree.isFocused(input_handle)) {
                         try screen_writer.writeAll(input.buf.firstHalf());
                         try screen_writer.writeAll(input.buf.secondHalf());
@@ -194,6 +189,8 @@ pub fn main() !u8 {
 
                         input.buf.clearRetainingCapacity();
                     }
+                } else {
+                    consumed = false;
                 }
             },
             .winsize => |winsize| {

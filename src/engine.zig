@@ -109,17 +109,30 @@ pub fn showDebugTree(self: *Engine, value: ?bool) void {
     }
 }
 
-pub fn dispatchEventToFocusedElement(self: *Engine, event: Event) std.mem.Allocator.Error!void {
-    if (self.tree.isFocused(.invalid)) return;
-    const element = self.tree.get(self.tree.focused_element);
+pub fn dispatchEvent(self: *Engine, event: *const Event) std.mem.Allocator.Error!void {
+    const root = self.tree.get(self.root);
 
-    try element.interface.onEvent(&Element.EventContext{
+    var ctx = Element.OnEventContext{
         .tree = &self.tree,
 
-        .handle = self.tree.focused_element,
+        .event = event,
+    };
+    try root.interface.onEvent(&ctx);
+}
 
-        .event = &event,
-    });
+pub fn dispatchEventToFocusedElement(self: *Engine, event: *const Event) std.mem.Allocator.Error!void {
+    if (self.tree.isFocused(.invalid)) return;
+    const handle = self.tree.focused_element;
+    const element = self.tree.get(handle);
+
+    var ctx = Element.EventContext{
+        .tree = &self.tree,
+
+        .handle = handle,
+
+        .event = event,
+    };
+    try element.interface.onEvent(&ctx);
 }
 
 pub const LayoutError = std.mem.Allocator.Error;
@@ -131,15 +144,14 @@ fn computeLayout(self: *Engine, allocator: std.mem.Allocator, screen: *Screen, r
     });
     defer layout_trace_zone.end();
 
-    const needed_space = try root.interface.computeLayout(&Element.CalcLayoutContext{
+    const ctx = Element.CalcLayoutContext{
         .allocator = allocator,
         .tree = &self.tree,
         .width_method = screen.width_method,
 
-        .handle = self.root,
-
         .available = screen.size,
-    });
+    };
+    const needed_space = try root.interface.computeLayout(&ctx);
 
     return needed_space;
 }
@@ -180,14 +192,13 @@ pub fn renderNextFrame(self: *Engine) Renderer.RenderError!void {
             .height = needed_space.y,
         });
 
-        try root.interface.draw(&Element.DrawContext{
+        const ctx = Element.DrawContext{
             .tree = &self.tree,
-
-            .handle = self.root,
 
             .view = root_view,
             .screen_store = &self.screen_store,
-        });
+        };
+        try root.interface.draw(&ctx);
     }
 
     if (self.show_stats) {

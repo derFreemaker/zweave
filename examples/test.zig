@@ -40,8 +40,8 @@ const Block = struct {
         } };
     }
 
-    fn getLayoutConstraints(self_ptr: *anyopaque, ctx: *const zweave.Element.GetLayoutConstraintsContext) zweave.Element.GetLayoutConstraintsError!zweave.LayoutConstraints {
-        const self: *Block = @ptrCast(@alignCast(self_ptr));
+    fn getLayoutConstraints(self_ctx: zweave.Element.SelfContext, ctx: *const zweave.Element.GetLayoutConstraintsContext) zweave.Element.GetLayoutConstraintsError!zweave.LayoutConstraints {
+        const self = self_ctx.get(Block);
         _ = ctx;
 
         return zweave.LayoutConstraints{
@@ -50,36 +50,37 @@ const Block = struct {
         };
     }
 
-    fn draw(self_ptr: *anyopaque, ctx: *const zweave.Element.DrawContext) zweave.Element.DrawError!void {
-        const self: *Block = @ptrCast(@alignCast(self_ptr));
+    fn draw(self_ctx: zweave.Element.SelfContext, ctx: *const zweave.Element.DrawContext) zweave.Element.DrawError!void {
+        const self = self_ctx.get(Block);
         const view = &ctx.view;
 
-        try self.input.element().draw(&zweave.Element.DrawContext{
-            .tree = ctx.tree,
+        var input_element_interface = self.input.element();
+        input_element_interface.handle = self_ctx.handle;
 
-            .handle = ctx.handle,
+        const input_draw_ctx = ctx.child(ctx.view.view(.{
+            .col = @divFloor(view.size.x, 2),
 
-            .view = ctx.view.view(.{
-                .col = @divFloor(view.size.x, 2),
-
-                .height = ctx.view.size.y,
-                .width = @divFloor(ctx.view.size.x, 2),
-            }),
-            .screen_store = ctx.screen_store,
-        });
+            .height = ctx.view.size.y,
+            .width = @divFloor(ctx.view.size.x, 2),
+        }));
+        try input_element_interface.draw(&input_draw_ctx);
 
         view.fill(ctx.screen_store, 0, 0, view.size.y, @divFloor(view.size.x, 2), .{ .long_shared = self.content_handle }, .{
             .style = self.style,
         });
 
-        _ = try view.write(10, 1, " hi Block here! ", .{
+        _ = try view.write(10, 2, "hi Block here!", .{
             .style = self.style,
         });
     }
 
-    fn onEvent(self_ptr: *anyopaque, ctx: *const zweave.Element.EventContext) zweave.Element.EventError!void {
-        const self: *Block = @ptrCast(@alignCast(self_ptr));
-        try self.input.element().onEvent(ctx);
+    fn onEvent(self_ctx: zweave.Element.SelfContext, ctx: *zweave.Element.OnEventContext) zweave.Element.OnEventError!void {
+        const self = self_ctx.get(Block);
+
+        var input_element_interface = self.input.element();
+        input_element_interface.handle = self_ctx.handle;
+
+        try input_element_interface.onEvent(ctx);
     }
 };
 
@@ -136,7 +137,7 @@ pub fn main() !u8 {
     try engine.tree.setFocus(block_handle);
 
     var screen = try zweave.Components.Screen.init(allocator, .{
-        .size = .{ .x = 60, .y = 30 },
+        .size = .{ .x = 50, .y = 30 },
         .width_method = engine.tty.caps.unicode_width_method,
     });
     defer screen.deinit(allocator);
@@ -150,9 +151,8 @@ pub fn main() !u8 {
     const input_handle = try engine.tree.create(input.element());
     defer engine.tree.destroy(input_handle);
 
-    // engine.tree.addChildren(engine.root, &.{ block_handle, screen_handle, input_handle });
     engine.tree.addChildren(engine.root, &.{ screen_handle, input_handle });
-    engine.tree.insertChildren(engine.root, 0, &.{block_handle});
+    engine.tree.insertChildren(engine.root, 1, &.{block_handle});
 
     while (true) {
         var event = engine.tty.nextEvent();
@@ -165,9 +165,11 @@ pub fn main() !u8 {
         });
         defer trace_zone.end();
 
-        var consumed = true;
+        var consumed = false;
         switch (event) {
             .key_press => |key_press| {
+                consumed = true;
+
                 if (key_press.matches(.from('c'), .{ .ctrl = true })) {
                     break;
                 } else if (key_press.matches(.f1, .{})) {
@@ -201,7 +203,7 @@ pub fn main() !u8 {
 
         if (!consumed) {
             if (zweave.Event.from(event)) |zweave_event| {
-                try engine.dispatchEventToFocusedElement(zweave_event);
+                try engine.dispatchEvent(&zweave_event);
             }
         }
 

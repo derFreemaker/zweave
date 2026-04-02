@@ -1,6 +1,7 @@
 const std = @import("std");
 
 const ScreenVec = @import("../common/screen_vec.zig");
+const LayoutData = @import("../layout/layout_data.zig");
 const LayoutConstraints = @import("../layout/layout_constraints.zig");
 const Element = @import("element.zig");
 const Event = @import("../event.zig").Event;
@@ -98,13 +99,13 @@ pub fn create(self: *Tree, interface: Element.Interface) Element.RegisterError!E
     element.* = Element{
         .interface = interface,
     };
+    element.interface.handle = handle;
 
     if (interface.hasRegister()) {
-        try interface.register(&Element.RegisterContext{
+        const ctx = Element.RegisterContext{
             .tree = self,
-
-            .handle = handle,
-        });
+        };
+        try interface.register(&ctx);
     }
 
     return handle;
@@ -137,18 +138,6 @@ pub fn getLayoutDataMut(self: *Tree, handle: Element.Handle) *LayoutData {
     std.debug.assert(self.isValid(handle));
     return &self.layout_data[handle.index];
 }
-
-pub const LayoutData = struct {
-    pub const zero = LayoutData{
-        .pos = .zero,
-        .size = .zero,
-    };
-
-    /// relative to parent element
-    pos: ScreenVec,
-
-    size: ScreenVec,
-};
 
 pub fn insertChildren(self: *Tree, parent_handle: Element.Handle, idx: usize, children: []const Element.Handle) void {
     std.debug.assert(self.isValid(parent_handle));
@@ -346,17 +335,17 @@ pub inline fn removeFocus(self: *Tree) void {
     self.focused_element = .invalid;
 }
 
-pub fn setFocus(self: *Tree, handle: Element.Handle) Element.EventError!void {
+pub fn setFocus(self: *Tree, handle: Element.Handle) Element.OnEventError!void {
     if (self.focused_element.eql(handle)) return;
 
     self.focused_element = handle;
-    try self.get(handle).interface.onEvent(&Element.EventContext{
+
+    var ctx = Element.OnEventContext{
         .tree = self,
 
-        .handle = handle,
-
-        .event = &.focus_in,
-    });
+        .event = &.on_focus,
+    };
+    try self.get(handle).interface.onEvent(&ctx);
 }
 
 pub fn writeDebugElementTree(self: *const Tree, writer: *std.Io.Writer, handle: Element.Handle, ident: ?u16) std.Io.Writer.Error!void {
@@ -379,12 +368,11 @@ fn writeDebugTreeElementInternal(self: *const Tree, fixed_allocator: *std.heap.F
             try writer.writeAll("    ");
         }
 
-        const child_id = child.interface.getDebugId(&Element.GetDebugIdContext{
+        const ctx = Element.GetDebugIdContext{
             .allocator = allocator,
             .tree = self,
-
-            .handle = child_handle,
-        }) catch return error.WriteFailed;
+        };
+        const child_id = child.interface.getDebugId(&ctx) catch return error.WriteFailed;
         try writer.writeAll(child_id);
         try writer.writeByte('\n');
         fixed_allocator.reset();

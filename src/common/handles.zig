@@ -132,5 +132,13 @@ pub fn HandleT(comptime ParentT: type, comptime T: type) type {
                 return self.index == other.index;
             }
         }
+
+        pub fn format(self: *const Self, writer: *std.Io.Writer) std.Io.Writer.Error!void {
+            if (comptime buildingSafe) {
+                try writer.print("{d}~{d}", .{ self.index, self.generation });
+            } else {
+                try writer.print("{d}", .{self.index});
+            }
+        }
     };
 }

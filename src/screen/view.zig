@@ -487,7 +487,7 @@ pub const ViewWriter = struct {
             const end_pos = self.view.write(self.pos.y, self.pos.x, line.content(&line_iter), .{}) catch return error.WriteFailed;
             self.pos.x += end_pos.x;
 
-            if (!line.last()) {
+            if (line.hasSeparator()) {
                 self.pos.x = 0;
                 self.pos.y += 1;
             }

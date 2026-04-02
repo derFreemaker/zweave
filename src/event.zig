@@ -9,6 +9,7 @@ pub const Event = union(enum) {
     mouse: zttio.Mouse,
     mouse_leave,
 
+    on_focus,
     focus_in,
     focus_out,
 

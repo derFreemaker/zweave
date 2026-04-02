@@ -32,5 +32,9 @@ pub fn IndexT(comptime ParentT: type, comptime T: type) type {
         pub inline fn inc(self: Self, n: T) Self {
             return Self.from(self.value() + n);
         }
+
+        pub fn format(self: Self, writer: *std.Io.Writer) std.Io.Writer.Error!void {
+            try writer.print("{d}", .{self.value()});
+        }
     };
 }

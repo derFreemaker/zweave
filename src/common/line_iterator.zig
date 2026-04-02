@@ -13,12 +13,13 @@ pub fn init(buffer: []const u8) LineIterator {
 }
 
 pub fn peek(self: *const LineIterator) ?Line {
-    var idx = std.mem.indexOfAnyPos(u8, self.buffer, self.index, &.{ '\n', '\r' }) orelse {
+    var idx = std.mem.indexOfAnyPos(u8, self.buffer, self.index, &.{ '\r', '\n' }) orelse {
         if (self.index < self.buffer.len) {
             return Line{
                 .start = self.index,
                 .end = self.buffer.len,
                 .separator_len = 0,
+                .last = true,
             };
         }
 
@@ -34,6 +35,7 @@ pub fn peek(self: *const LineIterator) ?Line {
         .start = self.index,
         .end = idx + 1,
         .separator_len = separator_len,
+        .last = idx + 1 >= self.buffer.len,
     };
 }
 
@@ -45,20 +47,29 @@ pub const Line = struct {
     start: usize,
     end: usize,
     separator_len: u8,
+    last: bool,
 
-    pub fn bytes(self: Line, line_iter: *LineIterator) []const u8 {
-        return line_iter.buffer[self.start..self.end];
-    }
-
-    pub fn content(self: Line, line_iter: *LineIterator) []const u8 {
-        return line_iter.buffer[self.start .. self.end - self.separator_len];
-    }
-
-    pub inline fn first(self: Line) bool {
+    pub inline fn isFirst(self: Line) bool {
         return self.start == 0;
     }
 
-    pub inline fn last(self: Line) bool {
-        return self.separator_len == 0;
+    pub inline fn isLast(self: Line) bool {
+        return self.last;
+    }
+
+    pub inline fn hasSeparator(self: Line) bool {
+        return self.separator_len != 0;
+    }
+
+    pub inline fn bytes(self: Line, line_iter: *const LineIterator) []const u8 {
+        return line_iter.buffer[self.start..self.end];
+    }
+
+    pub inline fn content(self: Line, line_iter: *const LineIterator) []const u8 {
+        return line_iter.buffer[self.start .. self.end - self.separator_len];
+    }
+
+    pub inline fn separator(self: Line, line_iter: *const LineIterator) []const u8 {
+        return line_iter.buffer[self.end - self.separator_len .. self.end];
     }
 };

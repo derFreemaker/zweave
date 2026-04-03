@@ -44,6 +44,33 @@ pub const Interface = struct {
 
     handle: Element.Handle = .invalid,
 
+    var dummy_: u8 = 0;
+    pub const dummy = Interface{
+        .ptr = &dummy_,
+        .vtable = &VTable{
+            .getLayoutConstraints = struct {
+                pub fn func(self_ctx: SelfContext, ctx: *const GetLayoutConstraintsContext) GetLayoutConstraintsError!LayoutConstraints {
+                    _ = self_ctx;
+                    _ = ctx;
+
+                    return LayoutConstraints{
+                        .height = .{ .fixed = 0 },
+                        .width = .{ .fixed = 0 },
+                    };
+                }
+            }.func,
+
+            .draw = struct {
+                pub fn func(self_ctx: SelfContext, ctx: *const DrawContext) DrawError!void {
+                    _ = self_ctx;
+                    _ = ctx;
+
+                    return;
+                }
+            }.func,
+        },
+    };
+
     fn context(self: Interface) SelfContext {
         return SelfContext{
             .ptr = self.ptr,
@@ -153,6 +180,7 @@ pub const CalcLayoutContext = struct {
     allocator: std.mem.Allocator,
     tree: *Tree,
 
+    viewport_size: ScreenVec,
     width_method: Unicode.WidthMethod,
     available: ScreenVec,
 

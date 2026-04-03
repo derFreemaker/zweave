@@ -26,18 +26,14 @@ pub fn isNull(self: *const LayoutConstraint) bool {
 
 pub const Constraint = union(enum) {
     fixed: u16,
-    percentage: f32,
-    // range: Range,
+    viewport_percentage: f32,
+    parent_percentage: f32,
 
     pub fn isNull(self: Constraint) bool {
         switch (self) {
             .fixed => |v| return v == 0,
-            .percentage => |v| return v == 0,
+            .viewport_percentage => |v| return v == 0,
+            .parent_percentage => |v| return v == 0,
         }
     }
-
-    pub const Range = struct {
-        min: ?u16 = null,
-        max: ?u16 = null,
-    };
 };

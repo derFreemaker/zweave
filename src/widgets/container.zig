@@ -32,8 +32,8 @@ fn getLayoutConstraints(self_ctx: Element.SelfContext, ctx: *const Element.GetLa
     _ = ctx;
 
     return LayoutConstraints{
-        .height = .{ .percentage = 1 },
-        .width = .{ .percentage = 1 },
+        .height = .{ .parent_percentage = 1 },
+        .width = .{ .parent_percentage = 1 },
     };
 }
 

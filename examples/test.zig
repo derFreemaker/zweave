@@ -11,10 +11,10 @@ const Block = struct {
     content_handle: zweave.StrHandle,
     style: zweave.StyleHandle = .invalid,
 
-    input: zweave.Components.TextInput,
+    input: zweave.Widgets.TextInput,
 
     pub fn init(allocator: std.mem.Allocator, width: f32, height: f32, content_handle: zweave.StrHandle, style: zweave.StyleHandle) std.mem.Allocator.Error!Block {
-        var input = try zweave.Components.TextInput.init(allocator);
+        var input = try zweave.Widgets.TextInput.init(allocator);
         errdefer input.deinit();
 
         return Block{
@@ -45,8 +45,8 @@ const Block = struct {
         _ = ctx;
 
         return zweave.LayoutConstraints{
-            .height = .{ .percentage = self.height },
-            .width = .{ .percentage = self.width },
+            .height = .{ .viewport_percentage = self.height },
+            .width = .{ .viewport_percentage = self.width },
         };
     }
 
@@ -136,7 +136,7 @@ pub fn main() !u8 {
     defer engine.tree.destroy(block_handle);
     try engine.tree.setFocus(block_handle);
 
-    var screen = try zweave.Components.Screen.init(allocator, .{
+    var screen = try zweave.Widgets.Screen.init(allocator, .{
         .size = .{ .x = 50, .y = 30 },
         .width_method = engine.tty.caps.unicode_width_method,
     });
@@ -146,13 +146,13 @@ pub fn main() !u8 {
     var screen_view_writer = screen.view.writer(&.{});
     const screen_writer = &screen_view_writer.writer;
 
-    var input = try zweave.Components.TextInput.init(allocator);
+    var input = try zweave.Widgets.TextInput.init(allocator);
     defer input.deinit();
     const input_handle = try engine.tree.create(input.element());
     defer engine.tree.destroy(input_handle);
 
     engine.tree.addChildren(engine.root, &.{ screen_handle, input_handle });
-    engine.tree.insertChildren(engine.root, 1, &.{block_handle});
+    engine.tree.insertChildren(engine.root, 2, &.{block_handle});
 
     while (true) {
         var event = engine.tty.nextEvent();

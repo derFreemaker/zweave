@@ -39,7 +39,8 @@ pub fn layout(handle: Element.Handle, ctx: *const Element.CalcLayoutContext, opt
 
         const width = switch (child_constraint.width) {
             .fixed => |fixed| fixed,
-            .percentage => |perc| @as(u16, @intFromFloat(@as(f32, @floatFromInt(ctx.available.x)) * perc)),
+            .viewport_percentage => |perc| @as(u16, @intFromFloat(@as(f32, @floatFromInt(ctx.viewport_size.x)) * perc)),
+            .parent_percentage => |perc| @as(u16, @intFromFloat(@as(f32, @floatFromInt(ctx.available.x)) * perc)),
         };
 
         if (width > budget.x) {
@@ -61,7 +62,8 @@ pub fn layout(handle: Element.Handle, ctx: *const Element.CalcLayoutContext, opt
 
         const height = switch (child_constraint.height) {
             .fixed => |fixed| fixed,
-            .percentage => |perc| @as(u16, @intFromFloat(@as(f32, @floatFromInt(ctx.available.y)) * perc)),
+            .viewport_percentage => |perc| @as(u16, @intFromFloat(@as(f32, @floatFromInt(ctx.viewport_size.y)) * perc)),
+            .parent_percentage => |perc| @as(u16, @intFromFloat(@as(f32, @floatFromInt(ctx.available.y)) * perc)),
         };
 
         if (height > budget.y) {

@@ -14,10 +14,10 @@ pub const StrHandle = ScreenStore.StrHandle;
 pub const StyleHandle = ScreenStore.StyleHandle;
 pub const SegmentHandle = ScreenStore.SegmentHandle;
 
-pub const Components = struct {
-    pub const Container = @import("components/container.zig");
-    pub const Screen = @import("components/screen.zig");
-    pub const TextInput = @import("components/text_input.zig");
+pub const Widgets = struct {
+    pub const Container = @import("widgets/container.zig");
+    pub const Screen = @import("widgets/screen.zig");
+    pub const TextInput = @import("widgets/text_input.zig");
 };
 
 test {

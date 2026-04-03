@@ -4,7 +4,7 @@ const zttio = @import("zttio");
 
 const ScreenVec = @import("common/screen_vec.zig");
 const CountingAllocator = @import("common/counting_allocator.zig");
-const Container = @import("components/container.zig");
+const Container = @import("widgets/container.zig");
 const Screen = @import("screen/screen.zig");
 const ScreenStore = @import("screen/screen_store.zig");
 const Style = @import("screen/styling.zig").Style;
@@ -125,10 +125,8 @@ pub fn dispatchEventToFocusedElement(self: *Engine, event: *const Event) std.mem
     const handle = self.tree.focused_element;
     const element = self.tree.get(handle);
 
-    var ctx = Element.EventContext{
+    var ctx = Element.OnEventContext{
         .tree = &self.tree,
-
-        .handle = handle,
 
         .event = event,
     };
@@ -147,8 +145,9 @@ fn computeLayout(self: *Engine, allocator: std.mem.Allocator, screen: *Screen, r
     const ctx = Element.CalcLayoutContext{
         .allocator = allocator,
         .tree = &self.tree,
-        .width_method = screen.width_method,
 
+        .viewport_size = screen.size,
+        .width_method = screen.width_method,
         .available = screen.size,
     };
     const needed_space = try root.interface.computeLayout(&ctx);

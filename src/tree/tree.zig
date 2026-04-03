@@ -48,10 +48,6 @@ pub fn deinit(self: *Tree) void {
 }
 
 pub fn clear(self: *Tree) void {
-    for (0..self.handle_store.count()) |i| {
-        self.elements[i].children.clearAndFree(self.allocator);
-    }
-
     self.handle_store.clear();
 }
 
@@ -144,19 +140,23 @@ pub fn insertChildren(self: *Tree, parent_handle: Element.Handle, idx: usize, ch
     if (children.len == 0) return;
 
     const parent = self.getMut(parent_handle);
-    var prev_child: Element.Handle = blk: {
-        if (idx == 0) break :blk .invalid;
+    var prev_child_handle: Element.Handle = blk: {
+        if (idx == 0 or
+            parent.first_child.isInvalid())
+        {
+            break :blk .invalid;
+        }
 
-        var cur_child = if (!parent.first_child.isInvalid()) break :blk .invalid else parent.first_child;
-        for (0..idx) |_| {
+        var cur_child = parent.first_child;
+        for (1..idx) |i| {
             cur_child = self.get(cur_child).next_sibling;
-            if (cur_child.isInvalid()) break :blk .invalid;
+            if (i < idx and cur_child.isInvalid()) break :blk .invalid;
         }
         break :blk cur_child;
     };
-    std.debug.assert(prev_child.isInvalid() or self.isValid(prev_child));
+    std.debug.assert(prev_child_handle.isInvalid() or self.isValid(prev_child_handle));
 
-    const next_child_handle: Element.Handle = if (prev_child.isInvalid()) parent.first_child else self.get(prev_child).next_sibling;
+    const next_child_handle: Element.Handle = if (prev_child_handle.isInvalid()) parent.first_child else self.get(prev_child_handle).next_sibling;
     std.debug.assert(next_child_handle.isInvalid() or self.isValid(next_child_handle));
 
     for (children) |child_handle| {
@@ -164,17 +164,24 @@ pub fn insertChildren(self: *Tree, parent_handle: Element.Handle, idx: usize, ch
 
         const child = self.getMut(child_handle);
         std.debug.assert(child.parent.isInvalid());
+        child.parent = parent_handle;
 
-        child.prev_sibling = prev_child;
-        prev_child = child_handle;
+        if (!prev_child_handle.isInvalid()) {
+            self.getMut(prev_child_handle).next_sibling = child_handle;
+        }
+
+        child.prev_sibling = prev_child_handle;
+        prev_child_handle = child_handle;
     }
 
     const last_child_handle = children[children.len - 1];
     const last_child = self.getMut(last_child_handle);
     last_child.next_sibling = next_child_handle;
 
-    const next_child = self.getMut(next_child_handle);
-    next_child.prev_sibling = last_child_handle;
+    if (!next_child_handle.isInvalid()) {
+        const next_child = self.getMut(next_child_handle);
+        next_child.prev_sibling = last_child_handle;
+    }
 
     if (idx == 0 or parent.first_child.isInvalid()) {
         parent.first_child = children[0];
@@ -284,7 +291,7 @@ pub const ChildIterator = struct {
         self.next_child = self.tree.get(self.next_child).next_sibling;
     }
 
-    pub fn count(self: *const ChildIterator) void {
+    pub fn count(self: *const ChildIterator) usize {
         var len: usize = 0;
         var cur_child = self.tree.get(self.parent_handle).first_child;
         while (!cur_child.isInvalid()) {
@@ -363,9 +370,8 @@ fn writeDebugTreeElementInternal(self: *const Tree, fixed_allocator: *std.heap.F
     while (child_iter.peek()) |child_handle| : (child_iter.toss()) {
         const child = self.get(child_handle);
 
-        // there has to be a better way
         for (0..ident) |_| {
-            try writer.writeAll("    ");
+            try writer.splatByteAll(' ', 4);
         }
 
         const ctx = Element.GetDebugIdContext{
@@ -379,4 +385,161 @@ fn writeDebugTreeElementInternal(self: *const Tree, fixed_allocator: *std.heap.F
 
         try self.writeDebugTreeElementInternal(fixed_allocator, writer, child_handle, ident + 1);
     }
+}
+
+fn checkChildrenEqual(tree: *const Tree, parent_handle: Element.Handle, children_handles: []const Element.Handle) !void {
+    if (children_handles.len == 0) return;
+
+    try std.testing.expect(tree.isValid(parent_handle));
+    const parent = tree.get(parent_handle);
+
+    try std.testing.expect(parent.first_child.eql(children_handles[0]));
+    try std.testing.expect(parent.last_child.eql(children_handles[children_handles.len - 1]));
+
+    var prev_sibling: Element.Handle = .invalid;
+    for (children_handles, 0..) |child_handle, i| {
+        try std.testing.expect(tree.isValid(child_handle));
+
+        const child = tree.get(child_handle);
+        try std.testing.expect(child.parent.eql(parent_handle));
+
+        try std.testing.expect(prev_sibling.eql(child.prev_sibling));
+        prev_sibling = child_handle;
+
+        const next_sibling: Element.Handle = if (i + 1 < children_handles.len) children_handles[i + 1] else .invalid;
+        try std.testing.expect(next_sibling.eql(child.next_sibling));
+    }
+}
+
+test "Tree: adding children" {
+    var tree = try Tree.init(std.testing.allocator);
+    defer tree.deinit();
+
+    const parent = try tree.create(.dummy);
+    defer tree.destroy(parent);
+
+    const child1 = try tree.create(.dummy);
+    defer tree.destroy(child1);
+
+    const child2 = try tree.create(.dummy);
+    defer tree.destroy(child2);
+
+    tree.addChildren(parent, &.{ child1, child2 });
+
+    try checkChildrenEqual(&tree, parent, &.{ child1, child2 });
+}
+
+test "Tree: remove children" {
+    var tree = try Tree.init(std.testing.allocator);
+    defer tree.deinit();
+
+    const parent = try tree.create(.dummy);
+    defer tree.destroy(parent);
+
+    const child1 = try tree.create(.dummy);
+    defer tree.destroy(child1);
+
+    const child2 = try tree.create(.dummy);
+    defer tree.destroy(child2);
+
+    tree.addChildren(parent, &.{ child1, child2 });
+    tree.removeChild(child1);
+
+    try checkChildrenEqual(&tree, parent, &.{child2});
+}
+
+test "Tree: destroy children" {
+    var tree = try Tree.init(std.testing.allocator);
+    defer tree.deinit();
+
+    const parent = try tree.create(.dummy);
+    defer tree.destroy(parent);
+
+    const child1 = try tree.create(.dummy);
+
+    const child2 = try tree.create(.dummy);
+    defer tree.destroy(child2);
+
+    tree.addChildren(parent, &.{ child1, child2 });
+    tree.destroy(child1);
+
+    try checkChildrenEqual(&tree, parent, &.{child2});
+}
+
+test "Tree: inserting children front" {
+    var tree = try Tree.init(std.testing.allocator);
+    defer tree.deinit();
+
+    const parent = try tree.create(.dummy);
+    defer tree.destroy(parent);
+
+    const child1 = try tree.create(.dummy);
+    defer tree.destroy(child1);
+
+    const child2 = try tree.create(.dummy);
+    defer tree.destroy(child2);
+
+    tree.addChildren(parent, &.{ child1, child2 });
+
+    const child3 = try tree.create(.dummy);
+    defer tree.destroy(child3);
+
+    const child4 = try tree.create(.dummy);
+    defer tree.destroy(child4);
+
+    tree.insertChildren(parent, 0, &.{ child4, child3 });
+
+    try checkChildrenEqual(&tree, parent, &.{ child4, child3, child1, child2 });
+}
+
+test "Tree: inserting children middle" {
+    var tree = try Tree.init(std.testing.allocator);
+    defer tree.deinit();
+
+    const parent = try tree.create(.dummy);
+    defer tree.destroy(parent);
+
+    const child1 = try tree.create(.dummy);
+    defer tree.destroy(child1);
+
+    const child2 = try tree.create(.dummy);
+    defer tree.destroy(child2);
+
+    tree.addChildren(parent, &.{ child1, child2 });
+
+    const child3 = try tree.create(.dummy);
+    defer tree.destroy(child3);
+
+    const child4 = try tree.create(.dummy);
+    defer tree.destroy(child4);
+
+    tree.insertChildren(parent, 1, &.{ child4, child3 });
+
+    try checkChildrenEqual(&tree, parent, &.{ child1, child4, child3, child2 });
+}
+
+test "Tree: inserting children last" {
+    var tree = try Tree.init(std.testing.allocator);
+    defer tree.deinit();
+
+    const parent = try tree.create(.dummy);
+    defer tree.destroy(parent);
+
+    const child1 = try tree.create(.dummy);
+    defer tree.destroy(child1);
+
+    const child2 = try tree.create(.dummy);
+    defer tree.destroy(child2);
+
+    tree.addChildren(parent, &.{ child1, child2 });
+
+    const child3 = try tree.create(.dummy);
+    defer tree.destroy(child3);
+
+    const child4 = try tree.create(.dummy);
+    defer tree.destroy(child4);
+
+    tree.insertChildren(parent, 2, &.{ child4, child3 });
+
+    try checkChildrenEqual(&tree, parent, &.{ child1, child2, child4, child3 });
 }

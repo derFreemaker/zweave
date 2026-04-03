@@ -63,9 +63,17 @@ pub fn GapBuffer(comptime T: type) type {
             return self.buf[self.cur_idx .. self.cur_idx + self.gap_size];
         }
 
-        pub fn grow(self: *Self, allocator: std.mem.Allocator) std.mem.Allocator.Error!void {
+        fn grow(self: *Self, allocator: std.mem.Allocator, minimum: usize) std.mem.Allocator.Error!void {
             const old_size = self.buf.len;
-            const new_size = self.buf.len +| self.buf.len / 2;
+            const new_size = blk: {
+                var new = @max(old_size, 32);
+                while (true) {
+                    new +|= new / 2;
+                    if (new >= minimum) {
+                        break :blk new;
+                    }
+                }
+            };
 
             const second_half_len = self.secondHalf().len;
 
@@ -88,7 +96,7 @@ pub fn GapBuffer(comptime T: type) type {
         pub fn insert(self: *Self, allocator: std.mem.Allocator, item: T) std.mem.Allocator.Error!void {
             if (self.gap_size < 1) {
                 @branchHint(.unlikely);
-                try self.grow(allocator);
+                try self.grow(allocator, self.buf.len + 1);
             }
 
             self.gap()[0] = item;
@@ -99,7 +107,7 @@ pub fn GapBuffer(comptime T: type) type {
         pub fn insertSlice(self: *Self, allocator: std.mem.Allocator, slice: []const T) std.mem.Allocator.Error!void {
             if (self.gap_size < slice.len) {
                 @branchHint(.unlikely);
-                try self.grow(allocator);
+                try self.grow(allocator, slice.len + self.gap_size);
             }
 
             @memcpy(self.gap()[0..slice.len], slice);
@@ -186,7 +194,7 @@ pub fn GapBuffer(comptime T: type) type {
 test GapBuffer {
     const allocator = std.testing.allocator;
 
-    var gap_buf: GapBuffer(u8, .{}) = .empty;
+    var gap_buf: GapBuffer(u8) = .empty;
     defer gap_buf.deinit(allocator);
 
     try gap_buf.insertSlice(allocator, "abc");

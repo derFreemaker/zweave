@@ -146,7 +146,10 @@ pub const GetDebugIdContext = struct {
 };
 
 fn getElementIndexAsDebugId(self_ctx: SelfContext, ctx: *const GetDebugIdContext) GetDebugIdError![]const u8 {
-    return try std.fmt.allocPrint(ctx.allocator, "<e:{f}>", .{self_ctx.handle});
+    _ = self_ctx;
+    _ = ctx;
+
+    return "<{Element}>";
 }
 
 pub const RegisterError = std.mem.Allocator.Error;

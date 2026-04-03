@@ -34,7 +34,10 @@ pub fn element(self: *TextInput) Element.Interface {
 }
 
 fn getDebugId(self_ctx: Element.SelfContext, ctx: *const Element.GetDebugIdContext) Element.GetDebugIdError![]const u8 {
-    return std.fmt.allocPrint(ctx.allocator, "<TextInput e:{f}>", .{self_ctx.handle});
+    _ = self_ctx;
+    _ = ctx;
+
+    return "<TextInput>";
 }
 
 fn getLayoutConstraints(self_ctx: Element.SelfContext, ctx: *const Element.GetLayoutConstraintsContext) Element.GetLayoutConstraintsError!LayoutConstraints {

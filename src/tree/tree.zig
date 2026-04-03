@@ -374,14 +374,18 @@ fn writeDebugTreeElementInternal(self: *const Tree, fixed_allocator: *std.heap.F
             try writer.splatByteAll(' ', 4);
         }
 
-        const ctx = Element.GetDebugIdContext{
-            .allocator = allocator,
-            .tree = self,
-        };
-        const child_id = child.interface.getDebugId(&ctx) catch return error.WriteFailed;
-        try writer.writeAll(child_id);
-        try writer.writeByte('\n');
-        fixed_allocator.reset();
+        {
+            const ctx = Element.GetDebugIdContext{
+                .allocator = allocator,
+                .tree = self,
+            };
+            defer fixed_allocator.reset();
+            const child_id = child.interface.getDebugId(&ctx) catch return error.WriteFailed;
+
+            try writer.print("{f} ", .{child_handle});
+            try writer.writeAll(child_id);
+            try writer.writeByte('\n');
+        }
 
         try self.writeDebugTreeElementInternal(fixed_allocator, writer, child_handle, ident + 1);
     }

@@ -7,9 +7,7 @@ const LayoutConstraints = @import("../layout/layout_constraints.zig");
 
 const Container = @This();
 
-pub fn init() Container {
-    return Container{};
-}
+gap: ScreenVec = .zero,
 
 pub fn element(self: *Container) Element.Interface {
     return .{ .ptr = self, .vtable = &.{
@@ -24,7 +22,7 @@ pub fn element(self: *Container) Element.Interface {
 }
 
 fn getDebugId(self_ctx: Element.SelfContext, ctx: *const Element.GetDebugIdContext) Element.GetDebugIdError![]const u8 {
-    return std.fmt.allocPrint(ctx.allocator, "<Container> {d}", .{ctx.tree.countChilds(self_ctx.handle)});
+    return std.fmt.allocPrint(ctx.allocator, "<Container c:{d}>", .{ctx.tree.countChilds(self_ctx.handle)});
 }
 
 fn getLayoutConstraints(self_ctx: Element.SelfContext, ctx: *const Element.GetLayoutConstraintsContext) Element.GetLayoutConstraintsError!LayoutConstraints {
@@ -44,8 +42,10 @@ fn computeLayout(self_ctx: Element.SelfContext, ctx: *const Element.CalcLayoutCo
     });
     defer trace_zone.end();
 
+    const self = self_ctx.get(Container);
+
     return @import("../layout/split_horizontal.zig").layout(self_ctx.handle, ctx, .{
-        .gap = .{ .x = 2, .y = 1 },
+        .gap = self.gap,
     });
 }
 

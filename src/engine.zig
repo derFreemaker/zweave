@@ -62,7 +62,7 @@ pub fn init_(self: *Engine, allocator: std.mem.Allocator, event_allocator: std.m
     self.renderer = try Renderer.init(self.render_allocator.allocator(), screen_size, self.tty.caps.unicode_width_method);
     errdefer self.renderer.deinit(allocator);
 
-    self.root_container = Container.init();
+    self.root_container = Container{};
     self.root = try self.tree.create(self.root_container.element());
     errdefer self.tree.destroy(self.root);
 
@@ -302,6 +302,7 @@ fn writeDebugTree(self: *const Engine) std.Io.Writer.Error!void {
     var stats_writer = stats_view.writer(&stats_buf);
     const writer = &stats_writer.writer;
 
+    try writer.print("{f} ", .{self.root});
     try writer.writeAll("<root>\n");
     try self.tree.writeDebugElementTree(writer, self.root, 1);
 

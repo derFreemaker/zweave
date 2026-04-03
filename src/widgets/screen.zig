@@ -54,7 +54,7 @@ fn getDebugId(self_ctx: Element.SelfContext, ctx: *const Element.GetDebugIdConte
     const self = self_ctx.get(Screen);
 
     const screen_size = self.view.screen.size;
-    return std.fmt.allocPrint(ctx.allocator, "<Screen e:{f} w:{d} h:{d}>", .{ self_ctx.handle, screen_size.x, screen_size.y });
+    return std.fmt.allocPrint(ctx.allocator, "<Screen w:{d} h:{d}>", .{ screen_size.x, screen_size.y });
 }
 
 fn getLayoutConstraints(self_ctx: Element.SelfContext, ctx: *const Element.GetLayoutConstraintsContext) Element.GetLayoutConstraintsError!LayoutConstraints {

@@ -10,6 +10,7 @@ const TextInput = @This();
 
 allocator: std.mem.Allocator,
 buf: GraphemeGapBuffer,
+foo_: bool = false,
 
 pub fn init(allocator: std.mem.Allocator) std.mem.Allocator.Error!TextInput {
     return TextInput{
@@ -24,7 +25,7 @@ pub fn deinit(self: *TextInput) void {
 
 pub fn element(self: *TextInput) Element.Interface {
     return Element.Interface{ .ptr = self, .vtable = &Element.Interface.VTable{
-        .getDebugId = getDebugId,
+        .getDebugStr = getDebugId,
 
         .getLayoutConstraints = getLayoutConstraints,
         .draw = draw,
@@ -49,7 +50,10 @@ fn getLayoutConstraints(self_ctx: Element.SelfContext, ctx: *const Element.GetLa
 
     const self = self_ctx.get(TextInput);
     if (self.buf.len() == 0) {
-        return .fixed(1);
+        return .{
+            .height = .{ .fixed = 1 },
+            .width = .{ .fixed = 0 },
+        };
     }
 
     var height: u16 = 0;
@@ -106,6 +110,11 @@ fn draw(self_ctx: Element.SelfContext, ctx: *const Element.DrawContext) Element.
     defer trace_zone.end();
 
     if (ctx.view.size.isNull()) {
+        if (ctx.tree.isFocused(self_ctx.handle)) {
+            ctx.view.setCursorPos(.zero);
+            ctx.view.setCursorShape(.blinking_bar);
+            ctx.view.setCursorVisibility(true);
+        }
         return;
     }
 
@@ -168,11 +177,6 @@ fn onEvent(self_ctx: Element.SelfContext, ctx: *Element.OnEventContext) Element.
             ctx.consume();
 
             try self.buf.insertGraphemeSlice(self.allocator, paste);
-            ctx.tree.markDirty(self_ctx.handle);
-        },
-
-        .focus_in => {
-            try self.buf.insertGraphemeSlice(self.allocator, "focus!");
             ctx.tree.markDirty(self_ctx.handle);
         },
 

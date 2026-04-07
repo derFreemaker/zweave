@@ -43,7 +43,7 @@ pub fn deinit(self: *Screen, allocator: std.mem.Allocator) void {
 
 pub fn element(self: *Screen) Element.Interface {
     return Element.Interface{ .ptr = self, .vtable = &Element.Interface.VTable{
-        .getDebugId = getDebugId,
+        .getDebugStr = getDebugId,
 
         .getLayoutConstraints = getLayoutConstraints,
         .draw = draw,

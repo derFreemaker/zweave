@@ -62,7 +62,12 @@ pub fn init_(self: *Engine, allocator: std.mem.Allocator, event_allocator: std.m
     self.renderer = try Renderer.init(self.render_allocator.allocator(), screen_size, self.tty.caps.unicode_width_method);
     errdefer self.renderer.deinit(allocator);
 
-    self.root_container = Container{};
+    self.root_container = Container{
+        .gap = .{
+            .x = 2,
+            .y = 1,
+        },
+    };
     self.root = try self.tree.create(self.root_container.element());
     errdefer self.tree.destroy(self.root);
 

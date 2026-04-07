@@ -11,13 +11,11 @@ gap: ScreenVec = .zero,
 
 pub fn element(self: *Container) Element.Interface {
     return .{ .ptr = self, .vtable = &.{
-        .getDebugId = getDebugId,
+        .getDebugStr = getDebugId,
 
         .getLayoutConstraints = getLayoutConstraints,
         .computeLayout = computeLayout,
         .draw = draw,
-
-        .onEvent = onEvent,
     } };
 }
 
@@ -71,15 +69,5 @@ fn draw(self_ctx: Element.SelfContext, ctx: *const Element.DrawContext) Element.
 
         const child = ctx.tree.get(child_handle);
         try child.interface.draw(&child_ctx);
-    }
-}
-
-fn onEvent(self_ctx: Element.SelfContext, ctx: *Element.OnEventContext) Element.OnEventError!void {
-    var child_iter = ctx.tree.childs(self_ctx.handle);
-    while (child_iter.peek()) |child_handle| : (child_iter.toss()) {
-        if (ctx.consumed) break;
-        const child = ctx.tree.get(child_handle);
-
-        try child.interface.onEvent(ctx);
     }
 }

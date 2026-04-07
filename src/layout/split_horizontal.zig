@@ -24,10 +24,6 @@ pub fn layout(handle: Element.Handle, ctx: *const Element.CalcLayoutContext, opt
         const child_constraint = try child.interface.getLayoutConstraints(&ctx.toGetLayoutConstraintsContext());
 
         const child_data = ctx.tree.getLayoutDataMut(child_handle);
-        if (child_constraint.isNull()) {
-            child_data.size = .zero;
-            continue;
-        }
 
         if (!first) {
             pos.x += std.math.clamp(opts.gap.x, 0, budget.x);
@@ -36,6 +32,11 @@ pub fn layout(handle: Element.Handle, ctx: *const Element.CalcLayoutContext, opt
         }
         first = false;
         child_data.pos = pos;
+
+        if (child_constraint.isNull()) {
+            child_data.size = .zero;
+            continue;
+        }
 
         const width = switch (child_constraint.width) {
             .fixed => |fixed| fixed,

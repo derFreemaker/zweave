@@ -146,11 +146,7 @@ pub fn writeCell(self: *const View, store: ?*const ScreenStore, row: u16, col: u
         return remaining_width;
     }
 
-    if (comptime builtin.mode != .Debug) {
-        @call(.always_inline, correctCellsFront, .{ self, cell_idx });
-    } else {
-        self.correctCellsFront(cell_idx);
-    }
+    @call(if (builtin.mode != .Debug) .always_inline else .auto, correctCellsFront, .{ self, cell_idx });
 
     screen.buf[cell_idx.value()] = .{
         .content = content,
@@ -166,11 +162,7 @@ pub fn writeCell(self: *const View, store: ?*const ScreenStore, row: u16, col: u
         .segment = opts.segment,
     });
 
-    if (comptime builtin.mode != .Debug) {
-        @call(.always_inline, correctCellsEnd, .{ self, cell_idx.inc(width) });
-    } else {
-        self.correctCellsEnd(cell_idx.inc(width));
-    }
+    @call(if (builtin.mode != .Debug) .always_inline else .auto, correctCellsEnd, .{ self, cell_idx.inc(width) });
 
     return width;
 }
@@ -239,11 +231,7 @@ pub fn fill(self: *const View, store: ?*const ScreenStore, row: u16, col: u16, h
     for (0..safe_height) |h| {
         const row_idx = self.getCellIndex(@intCast(row + h), col);
 
-        if (comptime builtin.mode != .Debug) {
-            @call(.always_inline, correctCellsFront, .{ self, row_idx });
-        } else {
-            self.correctCellsFront(row_idx);
-        }
+        @call(if (builtin.mode != .Debug) .always_inline else .auto, correctCellsFront, .{ self, row_idx });
 
         var current_col_idx = row_idx;
         for (0..amount) |_| {
@@ -261,11 +249,7 @@ pub fn fill(self: *const View, store: ?*const ScreenStore, row: u16, col: u16, h
             .segment = opts.segment,
         });
 
-        if (comptime builtin.mode != .Debug) {
-            @call(.always_inline, correctCellsEnd, .{ self, row_idx.inc(safe_width) });
-        } else {
-            self.correctCellsEnd(row_idx.inc(safe_width));
-        }
+        @call(if (builtin.mode != .Debug) .always_inline else .auto, correctCellsEnd, .{ self, row_idx.inc(safe_width) });
     }
 }
 

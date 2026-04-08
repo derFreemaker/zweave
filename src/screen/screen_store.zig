@@ -69,11 +69,11 @@ pub fn deinit(self: *ScreenStore) void {
 
 pub fn addStr(self: *ScreenStore, str_content: []const u8) std.mem.Allocator.Error!StrHandle {
     const handle = try self.str_store.create(self.allocator);
-    if (handle.index > self.strs.capacity) {
+    if (handle.index.value() > self.strs.capacity) {
         try self.strs.ensureTotalCapacity(self.allocator, self.strs.capacity + 1);
     }
 
-    const str: *[]const u8 = &self.strs.allocatedSlice()[handle.index];
+    const str: *[]const u8 = &self.strs.allocatedSlice()[handle.index.value()];
     str.* = str_content;
 
     return handle;
@@ -85,16 +85,16 @@ pub fn removeStr(self: *ScreenStore, handle: StrHandle) void {
 
 pub fn getStr(self: *const ScreenStore, handle: StrHandle) []const u8 {
     std.debug.assert(self.str_store.isValid(handle));
-    return self.strs.allocatedSlice()[handle.index];
+    return self.strs.allocatedSlice()[handle.index.value()];
 }
 
 pub fn addStyle(self: *ScreenStore, style: Style) std.mem.Allocator.Error!StyleHandle {
     const handle = try self.style_store.create(self.allocator);
-    if (handle.index > self.styles.capacity) {
+    if (handle.index.value() > self.styles.capacity) {
         try self.styles.ensureTotalCapacity(self.allocator, self.styles.capacity + 1);
     }
 
-    const style_ptr: *Style = &self.styles.allocatedSlice()[handle.index];
+    const style_ptr: *Style = &self.styles.allocatedSlice()[handle.index.value()];
     style_ptr.* = style;
 
     return handle;
@@ -106,16 +106,16 @@ pub fn removeStyle(self: *ScreenStore, handle: StyleHandle) void {
 
 pub fn getStyle(self: *const ScreenStore, handle: StyleHandle) *const Style {
     std.debug.assert(self.style_store.isValid(handle));
-    return &self.styles.allocatedSlice()[handle.index];
+    return &self.styles.allocatedSlice()[handle.index.value()];
 }
 
 pub fn addSegment(self: *ScreenStore, segment: Segment) std.mem.Allocator.Error!SegmentHandle {
     const handle = try self.segment_store.create(self.allocator);
-    if (handle.index > self.segments.capacity) {
+    if (handle.index.value() > self.segments.capacity) {
         try self.styles.ensureTotalCapacity(self.allocator, self.segments.capacity + 1);
     }
 
-    const segment_ptr: *Segment = &self.segments.allocatedSlice()[handle.index];
+    const segment_ptr: *Segment = &self.segments.allocatedSlice()[handle.index.value()];
     segment_ptr.* = segment;
 
     return handle;
@@ -127,5 +127,5 @@ pub fn removeSegment(self: *ScreenStore, handle: SegmentHandle) void {
 
 pub fn getSegment(self: *const ScreenStore, handle: SegmentHandle) *const Segment {
     std.debug.assert(self.segment_store.isValid(handle));
-    return &self.segments.allocatedSlice()[handle.index];
+    return &self.segments.allocatedSlice()[handle.index.value()];
 }

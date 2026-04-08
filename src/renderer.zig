@@ -9,6 +9,7 @@ const ScreenStore = @import("screen/screen_store.zig");
 const Tree = @import("tree/tree.zig");
 const Segment = @import("screen/segment.zig");
 const Style = @import("screen/styling.zig").Style;
+const Tty = @import("tty.zig").Tty;
 
 const Renderer = @This();
 
@@ -82,7 +83,7 @@ pub fn resize(self: *Renderer, new_size: ScreenVec) std.mem.Allocator.Error!void
 
 pub const RenderError = std.mem.Allocator.Error || std.Io.Writer.Error;
 
-pub fn render(self: *Renderer, screen_store: *const ScreenStore, tty: *zttio.Tty) RenderError!void {
+pub fn render(self: *Renderer, screen_store: *const ScreenStore, tty: *Tty) RenderError!void {
     const trace_zone = tracy.Zone.begin(.{
         .name = "[Renderer]: render",
         .src = @src(),
@@ -107,17 +108,18 @@ pub fn render(self: *Renderer, screen_store: *const ScreenStore, tty: *zttio.Tty
     self.prev = next;
 }
 
-fn renderDiff(screen: *const Screen, store: *const ScreenStore, diff: *const Screen.Diff, tty: *zttio.Tty) RenderError!void {
+//TODO: improve rendering with widthmethod: .wcwidth
+fn renderDiff(screen: *const Screen, store: *const ScreenStore, diff: *const Screen.Diff, tty: *Tty) RenderError!void {
     try tty.hideCursor();
     try tty.moveCursor(.home);
     try tty.stdout.writeAll(zttio.Styling.reset);
 
-    var next_wrap = diff.size.x;
+    var i: usize = 0;
+    var next_wrap: usize = diff.size.x;
+    var jumped_cells: u16 = 0;
     var cur_style_handle: ScreenStore.StyleHandle = .invalid;
     var cur_segment_handle: ScreenStore.SegmentHandle = .invalid;
     var current_segment: *const Segment = undefined;
-    var i: usize = 0;
-    var jumped_cells: u16 = 0;
     while (i < diff.len()) : (i += 1) {
         const cell = diff.buf[i];
         if (i >= next_wrap) {
@@ -197,7 +199,7 @@ fn renderDiff(screen: *const Screen, store: *const ScreenStore, diff: *const Scr
     }
 }
 
-fn renderDirect(screen: *const Screen, store: *const ScreenStore, tty: *zttio.Tty) std.Io.Writer.Error!void {
+fn renderDirect(screen: *const Screen, store: *const ScreenStore, tty: *Tty) std.Io.Writer.Error!void {
     try tty.clearScreen(.entire);
     try tty.hideCursor();
     try tty.moveCursor(.home);

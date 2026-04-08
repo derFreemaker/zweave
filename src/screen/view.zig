@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const tracy = @import("tracy");
 const zttio = @import("zttio");
 
@@ -38,7 +39,7 @@ pub fn getCellIndex(self: *const View, row: u16, col: u16) Cell.Index {
 }
 
 /// `cell_idx` is the cell which is going to be overriden.
-inline fn correctCellsFront(self: *const View, cell_idx: Cell.Index) void {
+fn correctCellsFront(self: *const View, cell_idx: Cell.Index) void {
     // This function can not be profiled directly since the cost of profiling is too high.
 
     if (cell_idx.value() <= 0) return;
@@ -60,9 +61,9 @@ inline fn correctCellsFront(self: *const View, cell_idx: Cell.Index) void {
         cell.content = .empty;
     }
 
-    var i: isize = cell_idx.value() - inlined_loops;
-    while (i >= 0) : (i -= 1) {
-        const cell: *Cell = &self.screen.buf[@intCast(cell_idx.value() - i)];
+    var i: usize = cell_idx.value() - inlined_loops + 1;
+    while (i > 0) : (i -= 1) {
+        const cell: *Cell = &self.screen.buf[i - 1];
         if (cell.content != .wide_continuation) {
             cell.content = .empty;
             return;
@@ -73,7 +74,7 @@ inline fn correctCellsFront(self: *const View, cell_idx: Cell.Index) void {
 }
 
 /// `cell_idx` is the cell behind the now overriden cell.
-inline fn correctCellsEnd(self: *const View, cell_idx: Cell.Index) void {
+fn correctCellsEnd(self: *const View, cell_idx: Cell.Index) void {
     // This function can not be profiled directly since the cost of profiling is too high.
 
     const buf_len = self.screen.len();
@@ -90,8 +91,7 @@ inline fn correctCellsEnd(self: *const View, cell_idx: Cell.Index) void {
         cell.content = .empty;
     }
 
-    var i: usize = cell_idx.value() + inlined_loops;
-    while (i < buf_len) : (i += 1) {
+    for (inlined_loops..buf_len) |i| {
         const cell: *Cell = &self.screen.buf[cell_idx.value() + i];
         if (cell.content != .wide_continuation) {
             return;
@@ -146,8 +146,11 @@ pub fn writeCell(self: *const View, store: ?*const ScreenStore, row: u16, col: u
         return remaining_width;
     }
 
-    @call(.always_inline, correctCellsFront, .{ self, cell_idx });
-    defer @call(.always_inline, correctCellsEnd, .{ self, cell_idx.inc(width) });
+    if (comptime builtin.mode != .Debug) {
+        @call(.always_inline, correctCellsFront, .{ self, cell_idx });
+    } else {
+        self.correctCellsFront(cell_idx);
+    }
 
     screen.buf[cell_idx.value()] = .{
         .content = content,
@@ -162,6 +165,12 @@ pub fn writeCell(self: *const View, store: ?*const ScreenStore, row: u16, col: u
         .style = opts.style,
         .segment = opts.segment,
     });
+
+    if (comptime builtin.mode != .Debug) {
+        @call(.always_inline, correctCellsEnd, .{ self, cell_idx.inc(width) });
+    } else {
+        self.correctCellsEnd(cell_idx.inc(width));
+    }
 
     return width;
 }
@@ -229,8 +238,12 @@ pub fn fill(self: *const View, store: ?*const ScreenStore, row: u16, col: u16, h
 
     for (0..safe_height) |h| {
         const row_idx = self.getCellIndex(@intCast(row + h), col);
-        self.correctCellsFront(row_idx);
-        defer self.correctCellsEnd(row_idx.inc(safe_width));
+
+        if (comptime builtin.mode != .Debug) {
+            @call(.always_inline, correctCellsFront, .{ self, row_idx });
+        } else {
+            self.correctCellsFront(row_idx);
+        }
 
         var current_col_idx = row_idx;
         for (0..amount) |_| {
@@ -247,6 +260,12 @@ pub fn fill(self: *const View, store: ?*const ScreenStore, row: u16, col: u16, h
             .style = opts.style,
             .segment = opts.segment,
         });
+
+        if (comptime builtin.mode != .Debug) {
+            @call(.always_inline, correctCellsEnd, .{ self, row_idx.inc(safe_width) });
+        } else {
+            self.correctCellsEnd(row_idx.inc(safe_width));
+        }
     }
 }
 

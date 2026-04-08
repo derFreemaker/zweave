@@ -86,10 +86,10 @@ pub fn create(self: *Tree, interface: Element.Interface) Element.RegisterError!E
     errdefer self.handle_store.destroy(handle);
 
     const element: *Element = blk: {
-        if (handle.index > self.elements.len) {
+        if (handle.index.value() > self.elements.len) {
             try self.grow();
         }
-        break :blk &self.elements[handle.index];
+        break :blk &self.elements[handle.index.value()];
     };
 
     element.* = Element{
@@ -97,12 +97,10 @@ pub fn create(self: *Tree, interface: Element.Interface) Element.RegisterError!E
     };
     element.interface.handle = handle;
 
-    if (interface.hasRegister()) {
-        const ctx = Element.RegisterContext{
-            .tree = self,
-        };
-        try interface.register(&ctx);
-    }
+    const ctx = Element.RegisterContext{
+        .tree = self,
+    };
+    try interface.register(&ctx);
 
     return handle;
 }
@@ -111,28 +109,28 @@ pub fn destroy(self: *Tree, handle: Element.Handle) void {
     if (!self.isValid(handle)) return;
     self.removeChild(handle);
 
-    self.layout_data[handle.index] = .zero;
+    self.layout_data[handle.index.value()] = .zero;
     self.handle_store.destroy(handle);
 }
 
 pub fn get(self: *const Tree, handle: Element.Handle) *const Element {
     std.debug.assert(self.isValid(handle));
-    return &self.elements[handle.index];
+    return &self.elements[handle.index.value()];
 }
 
 pub fn getMut(self: *Tree, handle: Element.Handle) *Element {
     std.debug.assert(self.isValid(handle));
-    return &self.elements[handle.index];
+    return &self.elements[handle.index.value()];
 }
 
 pub fn getLayoutData(self: *const Tree, handle: Element.Handle) *const LayoutData {
     std.debug.assert(self.isValid(handle));
-    return &self.layout_data[handle.index];
+    return &self.layout_data[handle.index.value()];
 }
 
 pub fn getLayoutDataMut(self: *Tree, handle: Element.Handle) *LayoutData {
     std.debug.assert(self.isValid(handle));
-    return &self.layout_data[handle.index];
+    return &self.layout_data[handle.index.value()];
 }
 
 pub fn insertChildren(self: *Tree, parent_handle: Element.Handle, idx: usize, children: []const Element.Handle) void {

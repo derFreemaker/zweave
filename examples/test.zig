@@ -155,7 +155,7 @@ pub fn main() !u8 {
     engine.tree.insertChildren(engine.root, 2, &.{block_handle});
 
     while (true) {
-        var event = engine.tty.nextEvent();
+        var event = try engine.tty.nextEvent();
         defer event.deinit(event_allocator);
 
         const trace_zone = tracy.Zone.begin(.{
@@ -213,7 +213,7 @@ pub fn main() !u8 {
     return 0;
 }
 
-var global_tty: ?*zttio.Tty = null;
+var global_tty: ?*zweave.Tty = null;
 
 pub const panic = std.debug.FullPanic(testPanic);
 pub fn testPanic(msg: []const u8, ret_addr: ?usize) noreturn {

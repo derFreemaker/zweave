@@ -12,6 +12,7 @@ const Tree = @import("tree/tree.zig");
 const Element = @import("tree/element.zig");
 const Renderer = @import("renderer.zig");
 const Event = @import("event.zig").Event;
+const Tty = @import("tty.zig").Tty;
 
 const Engine = @This();
 
@@ -20,7 +21,7 @@ tree_allocator: CountingAllocator,
 render_allocator: CountingAllocator,
 arena: std.heap.ArenaAllocator,
 
-tty: *zttio.Tty,
+tty: *Tty,
 tree: Tree,
 screen_store: ScreenStore,
 renderer: Renderer,
@@ -42,7 +43,7 @@ pub fn init_(self: *Engine, allocator: std.mem.Allocator, event_allocator: std.m
     self.render_allocator = CountingAllocator.init(allocator);
     self.arena = std.heap.ArenaAllocator.init(allocator);
 
-    self.tty = zttio.Tty.init(
+    self.tty = Tty.init(
         allocator,
         event_allocator,
         .stdin(),
@@ -147,7 +148,7 @@ fn computeLayout(self: *Engine, allocator: std.mem.Allocator, screen: *Screen, r
     });
     defer layout_trace_zone.end();
 
-    const ctx = Element.CalcLayoutContext{
+    const ctx = Element.ComputeLayoutContext{
         .allocator = allocator,
         .tree = &self.tree,
 
@@ -283,6 +284,8 @@ fn writeStats(self: *const Engine) std.Io.Writer.Error!void {
     }
 
     _ = try writer.print("prev Frame Time: {d}µs - {d}µs\n", .{ self.prev_frame_render_time, self.prev_frame_flush_time });
+
+    try writer.print("caps: {any}\n", .{self.tty.caps});
 
     try writer.flush();
 }

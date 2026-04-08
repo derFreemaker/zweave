@@ -34,7 +34,7 @@ cursor_shape: CursorShape,
 // mouse_shape: zttio.Mouse.Shape = .default,
 
 pub fn init(allocator: std.mem.Allocator, size: ScreenVec, width_method: Unicode.WidthMethod) std.mem.Allocator.Error!Screen {
-    const buf = try allocator.alloc(Cell, @as(usize, size.x) * @as(usize, size.y));
+    const buf = try allocator.alloc(Cell, @as(u32, size.x) * @as(u32, size.y));
     errdefer allocator.free(buf);
     @memset(buf, Cell{});
 
@@ -74,7 +74,7 @@ pub fn resize(self: *Screen, new_size: ScreenVec) std.mem.Allocator.Error!void {
 
     self.size = new_size;
 
-    const new_capacity: usize = @as(usize, new_size.x) * @as(usize, new_size.y);
+    const new_capacity: u32 = @as(u32, new_size.x) * @as(u32, new_size.y);
     if (new_capacity <= self.buf.len) {
         return;
     }
@@ -236,7 +236,8 @@ pub const Diff = struct {
     size: ScreenVec,
 
     pub fn init(allocator: std.mem.Allocator, size: ScreenVec) std.mem.Allocator.Error!Diff {
-        const buf = try allocator.alloc(Cell, size.x * size.y);
+        const cells = @as(usize, @intCast(size.x)) * @as(usize, @intCast(size.y));
+        const buf = try allocator.alloc(Cell, cells);
         errdefer allocator.free(buf);
 
         return Diff{

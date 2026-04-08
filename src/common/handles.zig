@@ -1,6 +1,8 @@
 const std = @import("std");
 const builtin = @import("builtin");
 
+const Indexes = @import("index.zig");
+
 const buildingSafe = builtin.mode == .Debug or builtin.mode == .ReleaseSafe;
 
 /// The maximum value of the given type is used for representing an invalid handle.
@@ -43,27 +45,25 @@ pub fn HandleStoreT(comptime ParentT: type, comptime T: type) type {
 
         pub fn isValid(self: *const Self, handle: Handle) bool {
             if (comptime buildingSafe) {
-                return self.handles.items.len > handle.index and
-                    self.handles.items[handle.index] == handle.generation;
+                return self.handles.items.len > handle.index.value() and
+                    self.handles.items[handle.index.value()] == handle.generation;
             } else {
-                return self.handles > handle.index;
+                return self.handles > handle.index.value();
             }
         }
 
         pub fn create(self: *Self, allocator: std.mem.Allocator) std.mem.Allocator.Error!Handle {
-            if (self.free_handles.getLastOrNull()) |handle_index| {
-                _ = self.free_handles.pop();
-
+            if (self.free_handles.pop()) |handle_index| {
                 return Handle{
-                    .index = handle_index,
+                    .index = .from(handle_index),
                     .generation = if (comptime buildingSafe) self.handles.items[handle_index] else void{},
                 };
             }
 
             std.debug.assert(if (comptime buildingSafe)
-                self.handles.items.len < Handle.invalid.index
+                self.handles.items.len < Handle.invalid.index.value()
             else
-                self.handles < Handle.invalid.index);
+                self.handles < Handle.invalid.index.value());
 
             if (comptime buildingSafe) {
                 const gen = try self.handles.addOne(allocator);
@@ -71,12 +71,12 @@ pub fn HandleStoreT(comptime ParentT: type, comptime T: type) type {
                 gen.* = 0;
 
                 return Handle{
-                    .index = @intCast(self.handles.items.len - 1),
+                    .index = .from(@intCast(self.handles.items.len - 1)),
                     .generation = 0,
                 };
             } else {
                 const handle = Handle{
-                    .index = self.handles,
+                    .index = .from(self.handles),
                     .generation = void{},
                 };
                 self.handles +|= 1;
@@ -90,14 +90,10 @@ pub fn HandleStoreT(comptime ParentT: type, comptime T: type) type {
             if (!self.isValid(handle)) return;
 
             if (comptime buildingSafe) {
-                self.handles.items[handle.index] +|= 1;
+                self.handles.items[handle.index.value()] +|= 1;
             }
 
-            self.free_handles.appendAssumeCapacity(handle.index);
-        }
-
-        pub fn maxUsed(self: *const Self) usize {
-            return if (comptime buildingSafe) self.handles.items.len else self.handles;
+            self.free_handles.appendAssumeCapacity(handle.index.value());
         }
     };
 }
@@ -115,13 +111,13 @@ pub fn HandleT(comptime ParentT: type, comptime T: type) type {
 
         const Self = @This();
 
-        pub const invalid = Self{ .index = std.math.maxInt(T), .generation = if (buildingSafe) 0 else void{} };
+        pub const invalid = Self{ .index = .invalid, .generation = if (buildingSafe) 0 else void{} };
 
         pub inline fn isInvalid(self: Self) bool {
-            return self.index == invalid.index;
+            return self.index == .invalid;
         }
 
-        index: T,
+        index: Indexes.IndexT(Self, T),
         generation: if (buildingSafe) T else void,
 
         pub inline fn eql(self: Self, other: Self) bool {
@@ -139,9 +135,9 @@ pub fn HandleT(comptime ParentT: type, comptime T: type) type {
             }
 
             if (comptime buildingSafe) {
-                return writer.print("{d}~{d}", .{ self.index, self.generation });
+                return writer.print("{f}~{d}", .{ self.index, self.generation });
             } else {
-                return writer.print("{d}", .{self.index});
+                return writer.print("{f}", .{self.index});
             }
         }
     };

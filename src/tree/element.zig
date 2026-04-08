@@ -29,14 +29,14 @@ childIsDirty: bool = false,
 
 pub const Interface = struct {
     pub const VTable = struct {
-        getDebugStr: *const fn (self_ctx: SelfContext, ctx: *const GetDebugIdContext) GetDebugIdError![]const u8 = defaultDebugStr,
+        getDebugStr: ?*const fn (self_ctx: SelfContext, ctx: *const GetDebugIdContext) GetDebugIdError![]const u8 = null,
         register: ?*const fn (self_ctx: SelfContext, ctx: *const RegisterContext) RegisterError!void = null,
 
         getLayoutConstraints: *const fn (self_ctx: SelfContext, ctx: *const GetLayoutConstraintsContext) GetLayoutConstraintsError!LayoutConstraints,
-        computeLayout: ?*const fn (self_ctx: SelfContext, ctx: *const CalcLayoutContext) CalcLayoutError!ScreenVec = null,
+        computeLayout: ?*const fn (self_ctx: SelfContext, ctx: *const ComputeLayoutContext) ComputeLayoutError!ScreenVec = null,
         draw: *const fn (self_ctx: SelfContext, ctx: *const DrawContext) DrawError!void,
 
-        onEvent: *const fn (self_ctx: SelfContext, ctx: *OnEventContext) OnEventError!void = passEventToChildren,
+        onEvent: ?*const fn (self_ctx: SelfContext, ctx: *OnEventContext) OnEventError!void = null,
     };
 
     ptr: *anyopaque,
@@ -78,29 +78,25 @@ pub const Interface = struct {
         };
     }
 
-    pub inline fn getDebugId(self: Interface, ctx: *const GetDebugIdContext) GetDebugIdError![]const u8 {
-        return self.vtable.getDebugStr(self.context(), ctx);
+    pub fn getDebugId(self: Interface, ctx: *const GetDebugIdContext) GetDebugIdError![]const u8 {
+        if (self.vtable.getDebugStr) |func| {
+            return func(self.context(), ctx);
+        }
+
+        return "<Element>";
     }
 
-    pub inline fn hasRegister(self: Interface) bool {
-        return self.vtable.register != null;
-    }
-
-    pub inline fn register(self: Interface, ctx: *const RegisterContext) RegisterError!void {
-        if (self.vtable.register) |register_func| {
-            return register_func(self.context(), ctx);
+    pub fn register(self: Interface, ctx: *const RegisterContext) RegisterError!void {
+        if (self.vtable.register) |func| {
+            return func(self.context(), ctx);
         }
     }
 
-    pub inline fn getLayoutConstraints(self: Interface, ctx: *const GetLayoutConstraintsContext) GetLayoutConstraintsError!LayoutConstraints {
+    pub fn getLayoutConstraints(self: Interface, ctx: *const GetLayoutConstraintsContext) GetLayoutConstraintsError!LayoutConstraints {
         return self.vtable.getLayoutConstraints(self.context(), ctx);
     }
 
-    pub inline fn hasComputeLayout(self: Interface) bool {
-        return self.vtable.computeLayout != null;
-    }
-
-    pub inline fn computeLayout(self: Interface, ctx: *const CalcLayoutContext) CalcLayoutError!ScreenVec {
+    pub fn computeLayout(self: Interface, ctx: *const ComputeLayoutContext) ComputeLayoutError!ScreenVec {
         if (self.vtable.computeLayout) |func| {
             return func(self.context(), ctx);
         }
@@ -108,12 +104,22 @@ pub const Interface = struct {
         return ctx.available;
     }
 
-    pub inline fn draw(self: Interface, ctx: *const DrawContext) DrawError!void {
+    pub fn draw(self: Interface, ctx: *const DrawContext) DrawError!void {
         return self.vtable.draw(self.context(), ctx);
     }
 
-    pub inline fn onEvent(self: Interface, ctx: *OnEventContext) OnEventError!void {
-        return self.vtable.onEvent(self.context(), ctx);
+    pub fn onEvent(self: Interface, ctx: *OnEventContext) OnEventError!void {
+        if (self.vtable.onEvent) |func| {
+            return func(self.context(), ctx);
+        }
+
+        var child_iter = ctx.tree.childs(self.handle);
+        while (child_iter.peek()) |child_handle| : (child_iter.toss()) {
+            if (ctx.consumed) break;
+            const child = ctx.tree.get(child_handle);
+
+            try child.interface.onEvent(ctx);
+        }
     }
 };
 
@@ -139,23 +145,6 @@ pub const GetDebugIdContext = struct {
     }
 };
 
-fn defaultDebugStr(self_ctx: SelfContext, ctx: *const GetDebugIdContext) GetDebugIdError![]const u8 {
-    _ = self_ctx;
-    _ = ctx;
-
-    return "<Element>";
-}
-
-fn passEventToChildren(self_ctx: SelfContext, ctx: *OnEventContext) OnEventError!void {
-    var child_iter = ctx.tree.childs(self_ctx.handle);
-    while (child_iter.peek()) |child_handle| : (child_iter.toss()) {
-        if (ctx.consumed) break;
-        const child = ctx.tree.get(child_handle);
-
-        try child.interface.onEvent(ctx);
-    }
-}
-
 pub const RegisterError = std.mem.Allocator.Error;
 
 pub const RegisterContext = struct {
@@ -179,9 +168,9 @@ pub const GetLayoutConstraintsContext = struct {
     }
 };
 
-pub const CalcLayoutError = std.mem.Allocator.Error;
+pub const ComputeLayoutError = std.mem.Allocator.Error;
 
-pub const CalcLayoutContext = struct {
+pub const ComputeLayoutContext = struct {
     const Context = @This();
 
     allocator: std.mem.Allocator,

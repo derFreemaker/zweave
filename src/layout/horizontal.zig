@@ -8,16 +8,34 @@ pub const Options = struct {
     gap: ScreenVec = .zero,
 };
 
-pub fn layout(handle: Element.Handle, ctx: *const Element.CalcLayoutContext, opts: Options) Element.CalcLayoutError!ScreenVec {
+pub fn layout(handle: Element.Handle, ctx: *const Element.ComputeLayoutContext, opts: Options) Element.ComputeLayoutError!ScreenVec {
     if (!ctx.tree.get(handle).isDirty and !ctx.tree.get(handle).childIsDirty) {
         return ctx.tree.getLayoutData(handle).size;
     }
 
+    // var child_iter = ctx.tree.childs(handle);
+    // var pos: ScreenVec = .zero;
+    // var max_width: u16 = 0;
+    // var budget = ctx.available;
+    // while (child_iter.peek()) |child_handle| : (child_iter.toss()) {
+    //     const child = ctx.tree.get(child_handle);
+
+    //     const child_constraint = try child.interface.getLayoutConstraints(&ctx.toGetLayoutConstraintsContext());
+
+    //     const child_data = ctx.tree.getLayoutDataMut(child_handle);
+
+    //     if (pos.x != 0) {
+    //         pos.x += std.math.clamp(opts.gap.x, 0, budget.x);
+    //     }
+    // }
+
     var child_iter = ctx.tree.childs(handle);
     var max_row_height: u16 = 0;
+    var max_width: u16 = 0;
     var pos: ScreenVec = .zero;
     var budget = ctx.available;
     var first: bool = true;
+    var first_on_row: bool = true;
     while (child_iter.peek()) |child_handle| : (child_iter.toss()) {
         const child = ctx.tree.get(child_handle);
 
@@ -25,9 +43,12 @@ pub fn layout(handle: Element.Handle, ctx: *const Element.CalcLayoutContext, opt
 
         const child_data = ctx.tree.getLayoutDataMut(child_handle);
 
-        if (!first) {
+        if (!first_on_row) {
             pos.x += std.math.clamp(opts.gap.x, 0, budget.x);
             budget.x -= std.math.clamp(opts.gap.x, 0, budget.x);
+        }
+        first_on_row = false;
+        if (!first) {
             budget.y -= std.math.clamp(opts.gap.y, 0, budget.y);
         }
         first = false;
@@ -46,17 +67,24 @@ pub fn layout(handle: Element.Handle, ctx: *const Element.CalcLayoutContext, opt
 
         if (width > budget.x) {
             const next_row_y = max_row_height + opts.gap.y;
-            pos.y = next_row_y;
             child_data.pos.x = 0;
             child_data.pos.y = next_row_y;
             max_row_height = 0;
             budget.y -= std.math.clamp(opts.gap.y, 0, budget.y);
 
             budget.x = ctx.available.x - @min(ctx.available.x, width);
-            pos.x = width;
+            first_on_row = true;
+            pos = .{
+                .x = width,
+                .y = next_row_y,
+            };
+
+            max_width = ctx.available.x;
         } else {
             budget.x -= width;
             pos.x += width;
+
+            max_width += width;
         }
 
         child_data.size.x = width;
@@ -77,5 +105,8 @@ pub fn layout(handle: Element.Handle, ctx: *const Element.CalcLayoutContext, opt
         max_row_height = @max(max_row_height, height);
     }
 
-    return ctx.available;
+    return ScreenVec{
+        .x = max_width,
+        .y = ctx.available.y - budget.y,
+    };
 }

@@ -33,7 +33,7 @@ fn getLayoutConstraints(self_ctx: Element.SelfContext, ctx: *const Element.GetLa
     };
 }
 
-fn computeLayout(self_ctx: Element.SelfContext, ctx: *const Element.CalcLayoutContext) Element.CalcLayoutError!ScreenVec {
+fn computeLayout(self_ctx: Element.SelfContext, ctx: *const Element.ComputeLayoutContext) Element.ComputeLayoutError!ScreenVec {
     const trace_zone = tracy.Zone.begin(.{
         .name = "[Container]: computeLayout",
         .src = @src(),
@@ -42,7 +42,7 @@ fn computeLayout(self_ctx: Element.SelfContext, ctx: *const Element.CalcLayoutCo
 
     const self = self_ctx.get(Container);
 
-    return @import("../layout/split_horizontal.zig").layout(self_ctx.handle, ctx, .{
+    return @import("../layout/horizontal.zig").layout(self_ctx.handle, ctx, .{
         .gap = self.gap,
     });
 }

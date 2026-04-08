@@ -39,7 +39,8 @@ pub fn layout(handle: Element.Handle, ctx: *const Element.ComputeLayoutContext, 
     while (child_iter.peek()) |child_handle| : (child_iter.toss()) {
         const child = ctx.tree.get(child_handle);
 
-        const child_requested_size = try child.interface.computeLayout(&ctx.child(budget));
+        const child_layout_ctx = ctx.child(budget);
+        const child_requested_size = try child.interface.computeLayout(&child_layout_ctx);
 
         const child_data = ctx.tree.getLayoutDataMut(child_handle);
 

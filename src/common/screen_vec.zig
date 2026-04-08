@@ -15,3 +15,10 @@ pub inline fn isNull(self: ScreenVec) bool {
 pub inline fn inside(self: ScreenVec, other: ScreenVec) bool {
     return self.x < other.x and self.y < other.y;
 }
+
+pub fn scale(self: ScreenVec, x: f32, y: f32) ScreenVec {
+    return ScreenVec{
+        .x = @as(u16, @intFromFloat(@as(f32, @floatFromInt(self.x)) * x)),
+        .y = @as(u16, @intFromFloat(@as(f32, @floatFromInt(self.y)) * y)),
+    };
+}

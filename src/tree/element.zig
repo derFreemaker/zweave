@@ -5,7 +5,6 @@ const ScreenVec = @import("../common/screen_vec.zig");
 const Unicode = @import("../common/unicode.zig");
 const Handles = @import("../common/handles.zig");
 const LayoutData = @import("../layout/layout_data.zig");
-const LayoutConstraints = @import("../layout/layout_constraints.zig");
 const Tree = @import("tree.zig");
 const ScreenView = @import("../screen/view.zig");
 const ScreenStore = @import("../screen/screen_store.zig");
@@ -32,11 +31,10 @@ pub const Interface = struct {
         getDebugStr: ?*const fn (self_ctx: SelfContext, ctx: *const GetDebugIdContext) GetDebugIdError![]const u8 = null,
         register: ?*const fn (self_ctx: SelfContext, ctx: *const RegisterContext) RegisterError!void = null,
 
-        getLayoutConstraints: *const fn (self_ctx: SelfContext, ctx: *const GetLayoutConstraintsContext) GetLayoutConstraintsError!LayoutConstraints,
         computeLayout: ?*const fn (self_ctx: SelfContext, ctx: *const ComputeLayoutContext) ComputeLayoutError!ScreenVec = null,
         draw: *const fn (self_ctx: SelfContext, ctx: *const DrawContext) DrawError!void,
 
-        onEvent: ?*const fn (self_ctx: SelfContext, ctx: *OnEventContext) OnEventError!void = null,
+        onEvent: ?*const fn (self_ctx: SelfContext, ctx: *OnEventContext) OnEventError!void = passEventToChildren,
     };
 
     ptr: *anyopaque,
@@ -48,15 +46,12 @@ pub const Interface = struct {
     pub const dummy = Interface{
         .ptr = &dummy_,
         .vtable = &VTable{
-            .getLayoutConstraints = struct {
-                pub fn func(self_ctx: SelfContext, ctx: *const GetLayoutConstraintsContext) GetLayoutConstraintsError!LayoutConstraints {
+            .computeLayout = struct {
+                pub fn func(self_ctx: SelfContext, ctx: *const ComputeLayoutContext) ComputeLayoutError!ScreenVec {
                     _ = self_ctx;
                     _ = ctx;
 
-                    return LayoutConstraints{
-                        .height = .{ .fixed = 0 },
-                        .width = .{ .fixed = 0 },
-                    };
+                    return .zero;
                 }
             }.func,
 
@@ -92,10 +87,6 @@ pub const Interface = struct {
         }
     }
 
-    pub fn getLayoutConstraints(self: Interface, ctx: *const GetLayoutConstraintsContext) GetLayoutConstraintsError!LayoutConstraints {
-        return self.vtable.getLayoutConstraints(self.context(), ctx);
-    }
-
     pub fn computeLayout(self: Interface, ctx: *const ComputeLayoutContext) ComputeLayoutError!ScreenVec {
         if (self.vtable.computeLayout) |func| {
             return func(self.context(), ctx);
@@ -112,16 +103,18 @@ pub const Interface = struct {
         if (self.vtable.onEvent) |func| {
             return func(self.context(), ctx);
         }
-
-        var child_iter = ctx.tree.childs(self.handle);
-        while (child_iter.peek()) |child_handle| : (child_iter.toss()) {
-            if (ctx.consumed) break;
-            const child = ctx.tree.get(child_handle);
-
-            try child.interface.onEvent(ctx);
-        }
     }
 };
+
+pub fn passEventToChildren(self_ctx: SelfContext, ctx: *OnEventContext) OnEventError!void {
+    var child_iter = ctx.tree.childs(self_ctx.handle);
+    while (child_iter.peek()) |child_handle| : (child_iter.toss()) {
+        if (ctx.consumed) break;
+        const child = ctx.tree.get(child_handle);
+
+        try child.interface.onEvent(ctx);
+    }
+}
 
 pub const SelfContext = struct {
     ptr: *anyopaque,
@@ -153,21 +146,6 @@ pub const RegisterContext = struct {
     tree: *Tree,
 };
 
-pub const GetLayoutConstraintsError = std.mem.Allocator.Error;
-
-pub const GetLayoutConstraintsContext = struct {
-    const Context = @This();
-
-    allocator: std.mem.Allocator,
-    tree: *const Tree,
-
-    width_method: Unicode.WidthMethod,
-
-    pub inline fn strWidth(self: *const Context, str: []const u8) usize {
-        return Unicode.strWidth(str, self.width_method);
-    }
-};
-
 pub const ComputeLayoutError = std.mem.Allocator.Error;
 
 pub const ComputeLayoutContext = struct {
@@ -176,21 +154,22 @@ pub const ComputeLayoutContext = struct {
     allocator: std.mem.Allocator,
     tree: *Tree,
 
-    viewport_size: ScreenVec,
     width_method: Unicode.WidthMethod,
+
+    viewport_size: ScreenVec,
+    parent_size: ScreenVec,
     available: ScreenVec,
 
     pub inline fn strWidth(self: *const Context, str: []const u8) usize {
         return Unicode.strWidth(str, self.width_method);
     }
 
-    pub inline fn toGetLayoutConstraintsContext(self: *const Context) GetLayoutConstraintsContext {
-        return GetLayoutConstraintsContext{
-            .allocator = self.allocator,
-            .tree = self.tree,
+    pub fn child(self: *const Context, child_size: ScreenVec) Context {
+        var copy: Context = self.*;
+        copy.parent_size = self.available;
+        copy.available = child_size;
 
-            .width_method = self.width_method,
-        };
+        return copy;
     }
 };
 

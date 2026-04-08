@@ -39,7 +39,7 @@ pub fn layout(handle: Element.Handle, ctx: *const Element.ComputeLayoutContext, 
     while (child_iter.peek()) |child_handle| : (child_iter.toss()) {
         const child = ctx.tree.get(child_handle);
 
-        const child_constraint = try child.interface.getLayoutConstraints(&ctx.toGetLayoutConstraintsContext());
+        const child_requested_size = try child.interface.computeLayout(&ctx.child(budget));
 
         const child_data = ctx.tree.getLayoutDataMut(child_handle);
 
@@ -54,18 +54,16 @@ pub fn layout(handle: Element.Handle, ctx: *const Element.ComputeLayoutContext, 
         first = false;
         child_data.pos = pos;
 
-        if (child_constraint.isNull()) {
+        if (child_requested_size.isNull()) {
             child_data.size = .zero;
             continue;
         }
 
-        const width = switch (child_constraint.width) {
-            .fixed => |fixed| fixed,
-            .viewport_percentage => |perc| @as(u16, @intFromFloat(@as(f32, @floatFromInt(ctx.viewport_size.x)) * perc)),
-            .parent_percentage => |perc| @as(u16, @intFromFloat(@as(f32, @floatFromInt(ctx.available.x)) * perc)),
-        };
+        const width = child_requested_size.x;
 
         if (width > budget.x) {
+            child_data.size.x = @min(width, ctx.available.x);
+
             const next_row_y = max_row_height + opts.gap.y;
             child_data.pos.x = 0;
             child_data.pos.y = next_row_y;
@@ -81,27 +79,26 @@ pub fn layout(handle: Element.Handle, ctx: *const Element.ComputeLayoutContext, 
 
             max_width = ctx.available.x;
         } else {
+            child_data.size.x = width;
+
             budget.x -= width;
             pos.x += width;
 
             max_width += width;
         }
 
-        child_data.size.x = width;
-
-        const height = switch (child_constraint.height) {
-            .fixed => |fixed| fixed,
-            .viewport_percentage => |perc| @as(u16, @intFromFloat(@as(f32, @floatFromInt(ctx.viewport_size.y)) * perc)),
-            .parent_percentage => |perc| @as(u16, @intFromFloat(@as(f32, @floatFromInt(ctx.available.y)) * perc)),
-        };
+        const height = child_requested_size.y;
 
         if (height > budget.y) {
+            child_data.size.y = budget.y;
+
             budget.y = 0;
         } else {
+            child_data.size.y = height;
+
             budget.y -= height;
         }
 
-        child_data.size.y = height;
         max_row_height = @max(max_row_height, height);
     }
 

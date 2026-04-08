@@ -8,7 +8,6 @@ const UnderlyingScreen = @import("../screen/screen.zig");
 const ScreenView = @import("../screen/view.zig");
 const ScreenStore = @import("../screen/screen_store.zig");
 const Element = @import("../tree/element.zig");
-const LayoutConstraints = @import("../layout/layout_constraints.zig");
 
 const Screen = @import("screen.zig");
 
@@ -45,7 +44,7 @@ pub fn element(self: *Screen) Element.Interface {
     return Element.Interface{ .ptr = self, .vtable = &Element.Interface.VTable{
         .getDebugStr = getDebugId,
 
-        .getLayoutConstraints = getLayoutConstraints,
+        .computeLayout = computeLayout,
         .draw = draw,
     } };
 }
@@ -57,13 +56,13 @@ fn getDebugId(self_ctx: Element.SelfContext, ctx: *const Element.GetDebugIdConte
     return std.fmt.allocPrint(ctx.allocator, "<Screen w:{d} h:{d}>", .{ screen_size.x, screen_size.y });
 }
 
-fn getLayoutConstraints(self_ctx: Element.SelfContext, ctx: *const Element.GetLayoutConstraintsContext) Element.GetLayoutConstraintsError!LayoutConstraints {
+fn computeLayout(self_ctx: Element.SelfContext, ctx: *const Element.ComputeLayoutContext) Element.ComputeLayoutError!ScreenVec {
     const self = self_ctx.get(Screen);
     _ = ctx;
 
-    return LayoutConstraints{
-        .height = .{ .fixed = self.view.size.y },
-        .width = .{ .fixed = self.view.size.x },
+    return ScreenVec{
+        .x = self.view.size.x,
+        .y = self.view.size.y,
     };
 }
 

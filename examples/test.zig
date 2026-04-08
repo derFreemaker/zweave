@@ -11,76 +11,32 @@ const Block = struct {
     content_handle: zweave.StrHandle,
     style: zweave.StyleHandle = .invalid,
 
-    input: zweave.Widgets.TextInput,
-
-    pub fn init(allocator: std.mem.Allocator, width: f32, height: f32, content_handle: zweave.StrHandle, style: zweave.StyleHandle) std.mem.Allocator.Error!Block {
-        var input = try zweave.Widgets.TextInput.init(allocator);
-        errdefer input.deinit();
-
-        return Block{
-            .width = width,
-            .height = height,
-            .content_handle = content_handle,
-            .style = style,
-
-            .input = input,
-        };
-    }
-
-    pub fn deinit(self: *Block) void {
-        self.input.deinit();
-    }
-
     pub fn element(self: *Block) zweave.Element.Interface {
         return .{ .ptr = self, .vtable = &.{
-            .getLayoutConstraints = getLayoutConstraints,
             .draw = draw,
 
-            .onEvent = onEvent,
+            .computeLayout = computeLayout,
+            .onEvent = null,
         } };
     }
 
-    fn getLayoutConstraints(self_ctx: zweave.Element.SelfContext, ctx: *const zweave.Element.GetLayoutConstraintsContext) zweave.Element.GetLayoutConstraintsError!zweave.LayoutConstraints {
+    fn computeLayout(self_ctx: zweave.Element.SelfContext, ctx: *const zweave.Element.ComputeLayoutContext) zweave.Element.ComputeLayoutError!zweave.ScreenVec {
         const self = self_ctx.get(Block);
-        _ = ctx;
 
-        return zweave.LayoutConstraints{
-            .height = .{ .viewport_percentage = self.height },
-            .width = .{ .viewport_percentage = self.width },
-        };
+        return ctx.viewport_size.scale(self.width, self.height);
     }
 
     fn draw(self_ctx: zweave.Element.SelfContext, ctx: *const zweave.Element.DrawContext) zweave.Element.DrawError!void {
         const self = self_ctx.get(Block);
         const view = &ctx.view;
 
-        var input_element_interface = self.input.element();
-        input_element_interface.handle = self_ctx.handle;
-
-        const input_draw_ctx = ctx.child(ctx.view.view(.{
-            .col = @divFloor(view.size.x, 2),
-
-            .height = ctx.view.size.y,
-            .width = @divFloor(ctx.view.size.x, 2),
-        }));
-        try input_element_interface.draw(&input_draw_ctx);
-
-        view.fill(ctx.screen_store, 0, 0, view.size.y, @divFloor(view.size.x, 2), .{ .long_shared = self.content_handle }, .{
+        view.fill(ctx.screen_store, 0, 0, view.size.y, view.size.x, .{ .long_shared = self.content_handle }, .{
             .style = self.style,
         });
 
         _ = try view.write(10, 2, "hi Block here!", .{
             .style = self.style,
         });
-    }
-
-    fn onEvent(self_ctx: zweave.Element.SelfContext, ctx: *zweave.Element.OnEventContext) zweave.Element.OnEventError!void {
-        const self = self_ctx.get(Block);
-
-        var input_element_interface = self.input.element();
-        input_element_interface.handle = self_ctx.handle;
-
-        try input_element_interface.onEvent(ctx);
     }
 };
 
@@ -130,8 +86,12 @@ pub fn main() !u8 {
     });
     defer engine.screen_store.removeStyle(style2_handle);
 
-    var block = try Block.init(allocator, 0.6, 0.6, str2_handle, style2_handle);
-    defer block.deinit();
+    var block = Block{
+        .width = 0.5,
+        .height = 0.3,
+        .content_handle = str2_handle,
+        .style = style2_handle,
+    };
     const block_handle = try engine.tree.create(block.element());
     defer engine.tree.destroy(block_handle);
     try engine.tree.setFocus(block_handle);
@@ -177,10 +137,10 @@ pub fn main() !u8 {
                 } else if (key_press.matches(.f2, .{})) {
                     engine.showDebugTree(null);
                 } else if (key_press.matches(.f3, .{})) {
-                    if (engine.tree.isFocused(input_handle)) {
-                        try engine.tree.setFocus(block_handle);
-                    } else {
+                    if (!engine.tree.isFocused(input_handle)) {
                         try engine.tree.setFocus(input_handle);
+                    } else {
+                        engine.tree.removeFocus();
                     }
                 } else if (key_press.matches(.enter, .{})) {
                     if (engine.tree.isFocused(input_handle)) {

@@ -2,7 +2,6 @@ const std = @import("std");
 
 const ScreenVec = @import("../common/screen_vec.zig");
 const LayoutData = @import("../layout/layout_data.zig");
-const LayoutConstraints = @import("../layout/layout_constraints.zig");
 const Element = @import("element.zig");
 const Event = @import("../event.zig").Event;
 
@@ -344,6 +343,8 @@ pub fn setFocus(self: *Tree, handle: Element.Handle) Element.OnEventError!void {
     if (self.focused_element.eql(handle)) return;
 
     self.focused_element = handle;
+
+    if (handle.isInvalid()) return;
 
     var ctx = Element.OnEventContext{
         .tree = self,

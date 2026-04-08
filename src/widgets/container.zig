@@ -3,7 +3,6 @@ const tracy = @import("tracy");
 
 const ScreenVec = @import("../common/screen_vec.zig");
 const Element = @import("../tree/element.zig");
-const LayoutConstraints = @import("../layout/layout_constraints.zig");
 
 const Container = @This();
 
@@ -13,7 +12,6 @@ pub fn element(self: *Container) Element.Interface {
     return .{ .ptr = self, .vtable = &.{
         .getDebugStr = getDebugId,
 
-        .getLayoutConstraints = getLayoutConstraints,
         .computeLayout = computeLayout,
         .draw = draw,
     } };
@@ -21,16 +19,6 @@ pub fn element(self: *Container) Element.Interface {
 
 fn getDebugId(self_ctx: Element.SelfContext, ctx: *const Element.GetDebugIdContext) Element.GetDebugIdError![]const u8 {
     return std.fmt.allocPrint(ctx.allocator, "<Container c:{d}>", .{ctx.tree.countChilds(self_ctx.handle)});
-}
-
-fn getLayoutConstraints(self_ctx: Element.SelfContext, ctx: *const Element.GetLayoutConstraintsContext) Element.GetLayoutConstraintsError!LayoutConstraints {
-    _ = self_ctx;
-    _ = ctx;
-
-    return LayoutConstraints{
-        .height = .{ .parent_percentage = 1 },
-        .width = .{ .parent_percentage = 1 },
-    };
 }
 
 fn computeLayout(self_ctx: Element.SelfContext, ctx: *const Element.ComputeLayoutContext) Element.ComputeLayoutError!ScreenVec {

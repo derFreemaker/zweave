@@ -1,8 +1,8 @@
 const std = @import("std");
 const tracy = @import("tracy");
 
+const ScreenVec = @import("../common/screen_vec.zig");
 const Element = @import("../tree/element.zig");
-const LayoutConstraints = @import("../layout/layout_constraints.zig");
 const GraphemeGapBuffer = @import("../common/grapheme_gap_buffer.zig");
 const LineIterator = @import("../common/line_iterator.zig");
 
@@ -27,7 +27,7 @@ pub fn element(self: *TextInput) Element.Interface {
     return Element.Interface{ .ptr = self, .vtable = &Element.Interface.VTable{
         .getDebugStr = getDebugId,
 
-        .getLayoutConstraints = getLayoutConstraints,
+        .computeLayout = computeLayout,
         .draw = draw,
 
         .onEvent = onEvent,
@@ -41,9 +41,9 @@ fn getDebugId(self_ctx: Element.SelfContext, ctx: *const Element.GetDebugIdConte
     return "<TextInput>";
 }
 
-fn getLayoutConstraints(self_ctx: Element.SelfContext, ctx: *const Element.GetLayoutConstraintsContext) Element.GetLayoutConstraintsError!LayoutConstraints {
+fn computeLayout(self_ctx: Element.SelfContext, ctx: *const Element.ComputeLayoutContext) Element.ComputeLayoutError!ScreenVec {
     const trace_zone = tracy.Zone.begin(.{
-        .name = "[TextInput]: getLayoutConstraints",
+        .name = "[TextInput]: computeLayout",
         .src = @src(),
     });
     defer trace_zone.end();
@@ -51,8 +51,8 @@ fn getLayoutConstraints(self_ctx: Element.SelfContext, ctx: *const Element.GetLa
     const self = self_ctx.get(TextInput);
     if (self.buf.len() == 0) {
         return .{
-            .height = .{ .fixed = 1 },
-            .width = .{ .fixed = 0 },
+            .x = 0,
+            .y = 1,
         };
     }
 
@@ -96,9 +96,9 @@ fn getLayoutConstraints(self_ctx: Element.SelfContext, ctx: *const Element.GetLa
         }
     }
 
-    return LayoutConstraints{
-        .height = .{ .fixed = height },
-        .width = .{ .fixed = max_width },
+    return ScreenVec{
+        .x = max_width,
+        .y = height,
     };
 }
 

@@ -387,6 +387,7 @@ pub fn write(self: *const View, row: u16, col: u16, content: []const u8, opts: W
     };
 }
 
+/// projects `other_view` onto this view
 pub fn projectView(self: *const View, other_view: *const View, row: u16, col: u16) std.mem.Allocator.Error!void {
     const trace_zone = tracy.Zone.begin(.{
         .name = "[ScreenView]: projectView",

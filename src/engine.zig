@@ -152,8 +152,10 @@ fn computeLayout(self: *Engine, allocator: std.mem.Allocator, screen: *Screen, r
         .allocator = allocator,
         .tree = &self.tree,
 
-        .viewport_size = screen.size,
         .width_method = screen.width_method,
+
+        .viewport_size = screen.size,
+        .parent_size = screen.size,
         .available = screen.size,
     };
     const needed_space = try root.interface.computeLayout(&ctx);

@@ -288,6 +288,10 @@ pub const ChildIterator = struct {
         self.next_child = self.tree.get(self.next_child).next_sibling;
     }
 
+    pub fn isEmpty(self: *const ChildIterator) bool {
+        return self.next_child.isInvalid();
+    }
+
     pub fn count(self: *const ChildIterator) usize {
         var len: usize = 0;
         var cur_child = self.tree.get(self.parent_handle).first_child;

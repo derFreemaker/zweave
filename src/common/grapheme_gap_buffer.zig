@@ -7,7 +7,6 @@ const GraphemeGapBuffer = @This();
 
 buf: GapBuffer(u8),
 graphemes_len: GapBuffer(u16),
-// max_display_width: u16,
 
 pub const empty = GraphemeGapBuffer{
     .buf = .empty,
@@ -116,8 +115,3 @@ pub fn growGapRight(self: *GraphemeGapBuffer, n: usize) void {
         _ = self.buf.growGapRight(grapheme_len);
     }
 }
-
-// const GraphemeInfo = struct {
-//     len: u16,
-//     display_width: u8,
-// };

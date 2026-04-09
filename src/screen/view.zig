@@ -40,8 +40,6 @@ pub fn getCellIndex(self: *const View, row: u16, col: u16) Cell.Index {
 
 /// `cell_idx` is the cell which is going to be overriden.
 fn correctCellsFront(self: *const View, cell_idx: Cell.Index) void {
-    // This function can not be profiled directly since the cost of profiling is too high.
-
     if (cell_idx.value() <= 0) return;
 
     // If the cell we are going to override is not a 'wide_continuation' than do nothing.
@@ -75,8 +73,6 @@ fn correctCellsFront(self: *const View, cell_idx: Cell.Index) void {
 
 /// `cell_idx` is the cell behind the now overriden cell.
 fn correctCellsEnd(self: *const View, cell_idx: Cell.Index) void {
-    // This function can not be profiled directly since the cost of profiling is too high.
-
     const buf_len = self.screen.len();
 
     const inlined_loops = 3;
@@ -110,8 +106,6 @@ pub const WriteCellOptions = struct {
 
 /// 'store' only needs to be provided if a 'long_shared' content is given.
 pub fn writeCell(self: *const View, store: ?*const ScreenStore, row: u16, col: u16, content: Cell.Content, opts: WriteCellOptions) u16 {
-    // This function can not be profiled directly since the cost of profiling is too high.
-
     if (row >= self.size.y or col >= self.size.x) {
         return 0;
     }
@@ -291,15 +285,9 @@ pub fn write(self: *const View, row: u16, col: u16, content: []const u8, opts: W
 
     var cur_col: u16 = 0;
     var cur_row: u16 = 0;
-    var grapheme_iter = Unicode.GraphemeClusterIterator.init(content);
-    while (grapheme_iter.next()) |grapheme| {
-        // const loop_trace_zone = tracy.Zone.begin(.{
-        //     .name = "[ScreenView]: write - loop",
-        //     .src = @src(),
-        // });
-        // defer loop_trace_zone.end();
-
-        const str = grapheme.bytes(&grapheme_iter);
+    var grapheme_cluster_iter = Unicode.GraphemeClusterIterator.init(content);
+    while (grapheme_cluster_iter.next()) |grapheme_cluster| {
+        const str = grapheme_cluster.bytes(&grapheme_cluster_iter);
 
         var cell_content: Cell.Content = undefined;
         switch (str.len) {
@@ -308,8 +296,8 @@ pub fn write(self: *const View, row: u16, col: u16, content: []const u8, opts: W
                 const c = str[0];
                 newline: switch (c) {
                     '\r' => {
-                        if (grapheme.start + 1 < content.len and content[grapheme.start + 1] == '\n') {
-                            grapheme_iter.skip();
+                        if (grapheme_cluster.start + 1 < content.len and content[grapheme_cluster.start + 1] == '\n') {
+                            grapheme_cluster_iter.skip();
                         }
 
                         continue :newline '\n';

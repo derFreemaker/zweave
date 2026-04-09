@@ -13,7 +13,7 @@ pub inline fn isNull(self: ScreenVec) bool {
 }
 
 pub inline fn inside(self: ScreenVec, other: ScreenVec) bool {
-    return self.x < other.x and self.y < other.y;
+    return self.x <= other.x and self.y <= other.y;
 }
 
 pub fn scale(self: ScreenVec, x: f32, y: f32) ScreenVec {

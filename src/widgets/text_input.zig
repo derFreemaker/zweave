@@ -10,7 +10,7 @@ const TextInput = @This();
 
 allocator: std.mem.Allocator,
 buf: GraphemeGapBuffer,
-foo_: bool = false,
+cached_size: ?ScreenVec = null,
 
 pub fn init(allocator: std.mem.Allocator) std.mem.Allocator.Error!TextInput {
     return TextInput{
@@ -25,7 +25,7 @@ pub fn deinit(self: *TextInput) void {
 
 pub fn element(self: *TextInput) Element.Interface {
     return Element.Interface{ .ptr = self, .vtable = &Element.Interface.VTable{
-        .getDebugStr = getDebugId,
+        .getDebugStr = getDebugStr,
 
         .computeLayout = computeLayout,
         .draw = draw,
@@ -34,7 +34,7 @@ pub fn element(self: *TextInput) Element.Interface {
     } };
 }
 
-fn getDebugId(self_ctx: Element.SelfContext, ctx: *const Element.GetDebugIdContext) Element.GetDebugIdError![]const u8 {
+fn getDebugStr(self_ctx: Element.SelfContext, ctx: *const Element.GetDebugIdContext) Element.GetDebugIdError![]const u8 {
     _ = self_ctx;
     _ = ctx;
 
@@ -54,6 +54,10 @@ fn computeLayout(self_ctx: Element.SelfContext, ctx: *const Element.ComputeLayou
             .x = 0,
             .y = 1,
         };
+    }
+
+    if (self.cached_size) |size| {
+        return size;
     }
 
     var height: u16 = 0;
@@ -96,10 +100,16 @@ fn computeLayout(self_ctx: Element.SelfContext, ctx: *const Element.ComputeLayou
         }
     }
 
-    return ScreenVec{
-        .x = max_width,
+    // ensure we are never writing into the most right cell in the terminal, since the cursor can not follow to the right side of the cell
+    const width = if (max_width < ctx.viewport_size.x) max_width else (if (ctx.viewport_size.x < 1) 0 else ctx.viewport_size.x - 1);
+
+    const size = ScreenVec{
+        .x = width,
         .y = height,
     };
+    self.cached_size = size;
+
+    return size;
 }
 
 fn draw(self_ctx: Element.SelfContext, ctx: *const Element.DrawContext) Element.DrawError!void {
@@ -149,27 +159,35 @@ fn onEvent(self_ctx: Element.SelfContext, ctx: *Element.OnEventContext) Element.
 
                 if (self.buf.canMoveGapLeft(1)) {
                     _ = self.buf.moveGapLeft(1);
+
                     ctx.tree.markDirty(self_ctx.handle);
+                    self.cached_size = null;
                 }
             } else if (key_press.matches(.right, .{})) {
                 ctx.consume();
 
                 if (self.buf.canMoveGapRight(1)) {
                     _ = self.buf.moveGapRight(1);
+
                     ctx.tree.markDirty(self_ctx.handle);
+                    self.cached_size = null;
                 }
             } else if (key_press.matches(.backspace, .{})) {
                 ctx.consume();
 
                 if (self.buf.canGrowGapLeft(1)) {
                     self.buf.growGapLeft(1);
+
                     ctx.tree.markDirty(self_ctx.handle);
+                    self.cached_size = null;
                 }
             } else if (key_press.text != .empty) {
                 ctx.consume();
 
                 try self.buf.insertGrapheme(self.allocator, key_press.text.get());
+
                 ctx.tree.markDirty(self_ctx.handle);
+                self.cached_size = null;
             }
         },
 
@@ -177,7 +195,9 @@ fn onEvent(self_ctx: Element.SelfContext, ctx: *Element.OnEventContext) Element.
             ctx.consume();
 
             try self.buf.insertGraphemeSlice(self.allocator, paste);
+
             ctx.tree.markDirty(self_ctx.handle);
+            self.cached_size = null;
         },
 
         else => {},

@@ -110,6 +110,12 @@ pub fn render(self: *Renderer, screen_store: *const ScreenStore, tty: *Tty) Rend
 
 //TODO: improve rendering with widthmethod: .wcwidth
 fn renderDiff(screen: *const Screen, store: *const ScreenStore, diff: *const Screen.Diff, tty: *Tty) RenderError!void {
+    const trace_zone = tracy.Zone.begin(.{
+        .name = "[Renderer]: render Diff",
+        .src = @src(),
+    });
+    defer trace_zone.end();
+
     try tty.hideCursor();
     try tty.moveCursor(.home);
     try tty.stdout.writeAll(zttio.Styling.reset);
@@ -200,6 +206,12 @@ fn renderDiff(screen: *const Screen, store: *const ScreenStore, diff: *const Scr
 }
 
 fn renderDirect(screen: *const Screen, store: *const ScreenStore, tty: *Tty) std.Io.Writer.Error!void {
+    const trace_zone = tracy.Zone.begin(.{
+        .name = "[Renderer]: render Direct",
+        .src = @src(),
+    });
+    defer trace_zone.end();
+
     try tty.clearScreen(.entire);
     try tty.hideCursor();
     try tty.moveCursor(.home);

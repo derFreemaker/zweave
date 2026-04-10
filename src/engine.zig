@@ -12,7 +12,6 @@ const Tree = @import("tree/tree.zig");
 const Element = @import("tree/element.zig");
 const Renderer = @import("renderer.zig");
 const Event = @import("event.zig").Event;
-const Tty = @import("tty.zig").Tty;
 
 const Engine = @This();
 
@@ -21,7 +20,9 @@ tree_allocator: CountingAllocator,
 render_allocator: CountingAllocator,
 arena: std.heap.ArenaAllocator,
 
-tty: *Tty,
+adapter: zttio.Adapters.NativeAdapter,
+parser: zttio.Parsers.NormalParser,
+tty: zttio.Tty,
 tree: Tree,
 screen_store: ScreenStore,
 renderer: Renderer,
@@ -39,16 +40,19 @@ prev_frame_flush_time: i64,
 pub const InitError = error{UnableToInitTty} || std.mem.Allocator.Error;
 
 pub fn init_(self: *Engine, allocator: std.mem.Allocator, event_allocator: std.mem.Allocator) InitError!void {
+    self.allocator = allocator;
     self.tree_allocator = CountingAllocator.init(allocator);
     self.render_allocator = CountingAllocator.init(allocator);
     self.arena = std.heap.ArenaAllocator.init(allocator);
 
-    self.tty = Tty.init(
+    self.adapter = zttio.Adapters.NativeAdapter.init(allocator, .stdin(), .stdout()) catch return error.UnableToInitTty;
+    self.parser = zttio.Parsers.NormalParser.init(allocator, event_allocator, self.adapter.adapter());
+    self.tty = zttio.Tty.init(
         allocator,
-        event_allocator,
-        .stdin(),
-        .stdout(),
-        .{},
+        self.parser.parser(),
+        .{
+            .caps = zttio.TerminalCapabilities.query(self.adapter.adapter(), 100) catch return error.UnableToInitTty,
+        },
     ) catch return error.UnableToInitTty;
     errdefer self.tty.deinit();
 
@@ -90,7 +94,10 @@ pub fn deinit(self: *Engine) void {
     self.renderer.deinit(self.render_allocator.allocator());
     self.screen_store.deinit();
     self.tree.deinit();
+
     self.tty.deinit();
+    self.parser.deinit();
+    self.adapter.deinit(self.allocator);
 }
 
 pub inline fn resize(self: *Engine, new_size: ScreenVec) std.mem.Allocator.Error!void {
@@ -216,7 +223,7 @@ pub fn renderNextFrame(self: *Engine) Renderer.RenderError!void {
         try self.writeDebugTree();
     }
 
-    try self.renderer.render(&self.screen_store, self.tty);
+    try self.renderer.render(&self.screen_store, &self.tty);
 
     const end_render = std.time.microTimestamp();
     self.prev_frame_render_time = end_render - start_render;

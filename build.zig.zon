@@ -5,8 +5,8 @@
     .minimum_zig_version = "0.15.2",
     .dependencies = .{
         .zttio = .{
-            .url = "git+https://github.com/derFreemaker/zttio#732482f2b124ab2917104cc5400f08faf77f161a",
-            .hash = "zttio-0.4.0-e5eFcJ6KAwC3NzQ0Ns1Pvtlc0xqRr-_6tcI9sQY3GT9e",
+            .url = "git+https://github.com/derFreemaker/zttio#83ab946b945dd8e481cf5278483bc451238a6141",
+            .hash = "zttio-0.4.0-e5eFcM6jAwCizsMIBU6noTrJt4luHMC9WqzH5srFiYfm",
         },
         .uucode = .{
             .url = "git+https://github.com/jacobsandlund/uucode#5f05f8f83a75caea201f12cc8ea32a2d82ea9732",

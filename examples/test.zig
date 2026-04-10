@@ -57,7 +57,7 @@ pub fn main() !u8 {
 
     var engine: zweave.Engine = undefined;
     try zweave.Engine.init_(&engine, allocator, event_allocator);
-    global_tty = engine.tty;
+    global_tty = &engine.tty;
     defer {
         engine.tty.flush() catch {};
         engine.deinit();
@@ -173,12 +173,12 @@ pub fn main() !u8 {
     return 0;
 }
 
-var global_tty: ?*zweave.Tty = null;
+var global_tty: ?*zttio.Tty = null;
 
 pub const panic = std.debug.FullPanic(testPanic);
 pub fn testPanic(msg: []const u8, ret_addr: ?usize) noreturn {
     if (global_tty) |tty| {
-        tty.revertTerminal();
+        tty.deinit();
     }
 
     std.debug.defaultPanic(msg, ret_addr);

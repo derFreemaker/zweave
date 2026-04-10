@@ -1,4 +1,3 @@
-pub const Tty = @import("tty.zig").Tty;
 pub const Engine = @import("engine.zig");
 
 pub const ScreenVec = @import("common/screen_vec.zig");

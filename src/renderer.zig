@@ -9,7 +9,6 @@ const ScreenStore = @import("screen/screen_store.zig");
 const Tree = @import("tree/tree.zig");
 const Segment = @import("screen/segment.zig");
 const Style = @import("screen/styling.zig").Style;
-const Tty = @import("tty.zig").Tty;
 
 const Renderer = @This();
 
@@ -83,7 +82,7 @@ pub fn resize(self: *Renderer, new_size: ScreenVec) std.mem.Allocator.Error!void
 
 pub const RenderError = std.mem.Allocator.Error || std.Io.Writer.Error;
 
-pub fn render(self: *Renderer, screen_store: *const ScreenStore, tty: *Tty) RenderError!void {
+pub fn render(self: *Renderer, screen_store: *const ScreenStore, tty: *zttio.Tty) RenderError!void {
     const trace_zone = tracy.Zone.begin(.{
         .name = "[Renderer]: render",
         .src = @src(),
@@ -108,8 +107,8 @@ pub fn render(self: *Renderer, screen_store: *const ScreenStore, tty: *Tty) Rend
     self.prev = next;
 }
 
-//TODO: improve rendering with widthmethod: .wcwidth
-fn renderDiff(screen: *const Screen, store: *const ScreenStore, diff: *const Screen.Diff, tty: *Tty) RenderError!void {
+// @TODO: improve rendering with widthmethod: .wcwidth
+fn renderDiff(screen: *const Screen, store: *const ScreenStore, diff: *const Screen.Diff, tty: *zttio.Tty) RenderError!void {
     const trace_zone = tracy.Zone.begin(.{
         .name = "[Renderer]: render Diff",
         .src = @src(),
@@ -118,7 +117,7 @@ fn renderDiff(screen: *const Screen, store: *const ScreenStore, diff: *const Scr
 
     try tty.hideCursor();
     try tty.moveCursor(.home);
-    try tty.stdout.writeAll(zttio.Styling.reset);
+    try tty.writer.writeAll(zttio.Styling.reset);
 
     var i: usize = 0;
     var next_wrap: usize = diff.size.x;
@@ -129,7 +128,7 @@ fn renderDiff(screen: *const Screen, store: *const ScreenStore, diff: *const Scr
     while (i < diff.len()) : (i += 1) {
         const cell = diff.buf[i];
         if (i >= next_wrap) {
-            try tty.stdout.writeByte('\n');
+            try tty.writer.writeByte('\n');
             next_wrap += diff.size.x;
             jumped_cells = 0;
         }
@@ -161,12 +160,12 @@ fn renderDiff(screen: *const Screen, store: *const ScreenStore, diff: *const Scr
 
         if (!cell.segment.eql(cur_segment_handle)) {
             if (!cur_segment_handle.isInvalid()) {
-                try current_segment.end(tty.stdout);
+                try current_segment.end(tty.writer);
             }
 
             if (!cell.segment.isInvalid()) {
                 const segment = store.getSegment(cell.segment);
-                try segment.begin(tty.stdout);
+                try segment.begin(tty.writer);
                 current_segment = segment;
             }
 
@@ -179,18 +178,18 @@ fn renderDiff(screen: *const Screen, store: *const ScreenStore, diff: *const Scr
             => unreachable,
 
             .char => |c| {
-                try tty.stdout.writeByte(c);
+                try tty.writer.writeByte(c);
             },
             .short => {
-                try tty.stdout.writeAll(cell.content.readShort());
+                try tty.writer.writeAll(cell.content.readShort());
             },
             .long_local => |idx| {
                 const str = screen.getStr(idx);
-                try tty.stdout.writeAll(str);
+                try tty.writer.writeAll(str);
             },
             .long_shared => |handle| {
                 const str = store.getStr(handle);
-                try tty.stdout.writeAll(str);
+                try tty.writer.writeAll(str);
             },
         }
     }
@@ -205,7 +204,7 @@ fn renderDiff(screen: *const Screen, store: *const ScreenStore, diff: *const Scr
     }
 }
 
-fn renderDirect(screen: *const Screen, store: *const ScreenStore, tty: *Tty) std.Io.Writer.Error!void {
+fn renderDirect(screen: *const Screen, store: *const ScreenStore, tty: *zttio.Tty) std.Io.Writer.Error!void {
     const trace_zone = tracy.Zone.begin(.{
         .name = "[Renderer]: render Direct",
         .src = @src(),
@@ -224,7 +223,7 @@ fn renderDirect(screen: *const Screen, store: *const ScreenStore, tty: *Tty) std
     while (i < screen.len()) : (i += 1) {
         const cell = screen.buf[i];
         if (i >= next_wrap) {
-            try tty.stdout.writeByte('\n');
+            try tty.writer.writeByte('\n');
             next_wrap += screen.size.x;
         }
 
@@ -245,12 +244,12 @@ fn renderDirect(screen: *const Screen, store: *const ScreenStore, tty: *Tty) std
 
         if (!cell.segment.eql(current_segment_handle)) {
             if (!current_segment_handle.isInvalid()) {
-                try current_segment.end(tty.stdout);
+                try current_segment.end(tty.writer);
             }
 
             if (!cell.segment.isInvalid()) {
                 const segment = store.getSegment(cell.segment);
-                try segment.begin(tty.stdout);
+                try segment.begin(tty.writer);
                 current_segment = segment;
             }
 
@@ -259,21 +258,21 @@ fn renderDirect(screen: *const Screen, store: *const ScreenStore, tty: *Tty) std
 
         switch (cell.content) {
             .empty => {
-                try tty.stdout.writeByte(' ');
+                try tty.writer.writeByte(' ');
             },
             .char => |c| {
-                try tty.stdout.writeByte(c);
+                try tty.writer.writeByte(c);
             },
             .short => {
-                try tty.stdout.writeAll(cell.content.readShort());
+                try tty.writer.writeAll(cell.content.readShort());
             },
             .long_local => |idx| {
                 const str = screen.getStr(idx);
-                try tty.stdout.writeAll(str);
+                try tty.writer.writeAll(str);
             },
             .long_shared => |handle| {
                 const str = store.getStr(handle);
-                try tty.stdout.writeAll(str);
+                try tty.writer.writeAll(str);
             },
             .wide_continuation => unreachable,
         }

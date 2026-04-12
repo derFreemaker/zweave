@@ -23,12 +23,12 @@ last_child: Handle = .invalid,
 prev_sibling: Handle = .invalid,
 next_sibling: Handle = .invalid,
 
-isDirty: bool = true,
-childIsDirty: bool = false,
+// isDirty: bool = true,
+// childIsDirty: bool = false,
 
 pub const Interface = struct {
     pub const VTable = struct {
-        getDebugStr: ?*const fn (self_ctx: SelfContext, ctx: *const GetDebugIdContext) GetDebugIdError![]const u8 = null,
+        getDebugStr: ?*const fn (self_ctx: SelfContext, ctx: *const GetDebugStrContext) GetDebugStrError![]const u8 = null,
         register: ?*const fn (self_ctx: SelfContext, ctx: *const RegisterContext) RegisterError!void = null,
 
         computeLayout: ?*const fn (self_ctx: SelfContext, ctx: *const ComputeLayoutContext) ComputeLayoutError!ScreenVec = null,
@@ -73,7 +73,7 @@ pub const Interface = struct {
         };
     }
 
-    pub fn getDebugId(self: Interface, ctx: *const GetDebugIdContext) GetDebugIdError![]const u8 {
+    pub fn getDebugStr(self: Interface, ctx: *const GetDebugStrContext) GetDebugStrError![]const u8 {
         if (self.vtable.getDebugStr) |func| {
             return func(self.context(), ctx);
         }
@@ -125,9 +125,9 @@ pub const SelfContext = struct {
     }
 };
 
-pub const GetDebugIdError = std.mem.Allocator.Error;
+pub const GetDebugStrError = std.mem.Allocator.Error;
 
-pub const GetDebugIdContext = struct {
+pub const GetDebugStrContext = struct {
     const Context = @This();
 
     allocator: std.mem.Allocator,

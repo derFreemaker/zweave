@@ -22,3 +22,25 @@ pub fn scale(self: ScreenVec, x: f32, y: f32) ScreenVec {
         .y = @as(u16, @intFromFloat(@as(f32, @floatFromInt(self.y)) * y)),
     };
 }
+
+/// clamps into zero
+pub inline fn sub(self: ScreenVec, other: ScreenVec) ScreenVec {
+    return ScreenVec{
+        .x = self.x -| other.x,
+        .y = self.y -| other.y,
+    };
+}
+
+pub inline fn add(self: ScreenVec, other: ScreenVec) ScreenVec {
+    return ScreenVec{
+        .x = self.x + other.x,
+        .y = self.y + other.y,
+    };
+}
+
+pub inline fn min(self: ScreenVec, other: ScreenVec) ScreenVec {
+    return ScreenVec{
+        .x = @min(self.x, other.x),
+        .y = @min(self.y, other.y),
+    };
+}

@@ -42,14 +42,14 @@ pub fn deinit(self: *Screen, allocator: std.mem.Allocator) void {
 
 pub fn element(self: *Screen) Element.Interface {
     return Element.Interface{ .ptr = self, .vtable = &Element.Interface.VTable{
-        .getDebugStr = getDebugId,
+        .getDebugStr = getDebugStr,
 
         .computeLayout = computeLayout,
         .draw = draw,
     } };
 }
 
-fn getDebugId(self_ctx: Element.SelfContext, ctx: *const Element.GetDebugIdContext) Element.GetDebugIdError![]const u8 {
+fn getDebugStr(self_ctx: Element.SelfContext, ctx: *const Element.GetDebugStrContext) Element.GetDebugStrError![]const u8 {
     const self = self_ctx.get(Screen);
 
     const screen_size = self.view.screen.size;

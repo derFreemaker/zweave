@@ -62,20 +62,21 @@ comptime {
     }
 }
 
-pub const shortStringMaxLength = 7;
+pub const CONTENT_SHORT_STR_MAX_LENGTH = 7;
 
 pub const Content = union(enum) {
     empty: void,
     char: u8,
     /// null terminated if not fully used
-    short: [shortStringMaxLength]u8,
+    short: [CONTENT_SHORT_STR_MAX_LENGTH]u8,
+    /// lives only during one frame
     long_local: Screen.StrIndex,
     long_shared: ScreenStore.StrHandle,
     wide_continuation: void,
 
     pub inline fn readShort(self: *const Content) []const u8 {
         std.debug.assert(self.* == .short);
-        const end = std.mem.indexOf(u8, &self.short, &.{0}) orelse shortStringMaxLength;
+        const end = std.mem.indexOf(u8, &self.short, &.{0}) orelse CONTENT_SHORT_STR_MAX_LENGTH;
         return self.short[0..end];
     }
 
@@ -94,5 +95,30 @@ pub const Content = union(enum) {
             },
             .wide_continuation => break :blk 0,
         });
+    }
+
+    pub fn from(str: []const u8) Content {
+        comptime std.debug.assert(CONTENT_SHORT_STR_MAX_LENGTH > 2);
+
+        return switch (str.len) {
+            0 => .empty,
+            1 => Content{ .char = str[0] },
+            2...CONTENT_SHORT_STR_MAX_LENGTH - 1 => {
+                var buf: [CONTENT_SHORT_STR_MAX_LENGTH]u8 = undefined;
+                buf[str.len] = 0;
+                @memcpy(buf[0..str.len], str);
+
+                return Content{ .short = buf };
+            },
+            CONTENT_SHORT_STR_MAX_LENGTH => {
+                var buf: [CONTENT_SHORT_STR_MAX_LENGTH]u8 = undefined;
+                @memcpy(&buf, str);
+
+                return Content{ .short = buf };
+            },
+            else => {
+                std.debug.panic("str.len: ({d}) > max length: {d}", .{ str.len, CONTENT_SHORT_STR_MAX_LENGTH });
+            },
+        };
     }
 };

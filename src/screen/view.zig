@@ -321,7 +321,7 @@ pub fn write(self: *const View, row: u16, col: u16, content: []const u8, opts: W
                 cell_content = .{ .char = c };
             },
 
-            2...Cell.shortStringMaxLength => {
+            2...Cell.CONTENT_SHORT_STR_MAX_LENGTH => {
                 const str_width = self.strWidth(str);
                 if (cur_col + str_width > max_width) {
                     continue;
@@ -329,7 +329,7 @@ pub fn write(self: *const View, row: u16, col: u16, content: []const u8, opts: W
 
                 cell_content = .{ .short = undefined };
                 @memcpy(cell_content.short[0..str.len], str);
-                if (str.len < Cell.shortStringMaxLength) {
+                if (str.len < Cell.CONTENT_SHORT_STR_MAX_LENGTH) {
                     cell_content.short[str.len] = 0;
                 }
             },

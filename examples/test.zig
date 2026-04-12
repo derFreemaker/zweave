@@ -94,7 +94,12 @@ pub fn main() !u8 {
     };
     const block_handle = try engine.tree.create(block.element());
     defer engine.tree.destroy(block_handle);
-    try engine.tree.setFocus(block_handle);
+
+    var frame = zweave.Widgets.Frame{
+        .border = .line,
+    };
+    const frame_handle = try engine.tree.create(frame.element());
+    defer engine.tree.destroy(frame_handle);
 
     var screen = try zweave.Widgets.Screen.init(allocator, .{
         .size = .{ .x = 50, .y = 30 },
@@ -111,8 +116,9 @@ pub fn main() !u8 {
     const input_handle = try engine.tree.create(input.element());
     defer engine.tree.destroy(input_handle);
 
-    engine.tree.addChildren(engine.root, &.{ screen_handle, input_handle });
-    engine.tree.insertChildren(engine.root, 2, &.{block_handle});
+    engine.tree.addChildren(frame_handle, &.{input_handle});
+
+    engine.tree.addChildren(engine.root, &.{ screen_handle, frame_handle, block_handle });
 
     while (true) {
         var event = try engine.tty.nextEvent();

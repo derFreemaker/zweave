@@ -17,7 +17,7 @@ pub fn element(self: *Container) Element.Interface {
     } };
 }
 
-fn getDebugId(self_ctx: Element.SelfContext, ctx: *const Element.GetDebugIdContext) Element.GetDebugIdError![]const u8 {
+fn getDebugId(self_ctx: Element.SelfContext, ctx: *const Element.GetDebugStrContext) Element.GetDebugStrError![]const u8 {
     return std.fmt.allocPrint(ctx.allocator, "<Container c:{d}>", .{ctx.tree.countChilds(self_ctx.handle)});
 }
 

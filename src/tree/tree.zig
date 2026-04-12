@@ -91,6 +91,9 @@ pub fn create(self: *Tree, interface: Element.Interface) Element.RegisterError!E
         break :blk &self.elements[handle.index.value()];
     };
 
+    const layout_data = self.getLayoutDataMut(handle);
+    layout_data.* = .zero;
+
     element.* = Element{
         .interface = interface,
     };
@@ -107,6 +110,15 @@ pub fn create(self: *Tree, interface: Element.Interface) Element.RegisterError!E
 pub fn destroy(self: *Tree, handle: Element.Handle) void {
     if (!self.isValid(handle)) return;
     self.removeChild(handle);
+
+    var child_iter = self.childs(handle);
+    while (child_iter.peek()) |child_handle| : (child_iter.toss()) {
+        const child = self.getMut(child_handle);
+
+        child.parent = .invalid;
+        child.prev_sibling = .invalid;
+        child.next_sibling = .invalid;
+    }
 
     self.layout_data[handle.index.value()] = .zero;
     self.handle_store.destroy(handle);
@@ -316,24 +328,24 @@ pub fn countChilds(self: *const Tree, handle: Element.Handle) usize {
     return count;
 }
 
-pub fn markDirty(self: *Tree, handle: Element.Handle) void {
-    if (!self.isValid(handle)) return;
+// pub fn markDirty(self: *Tree, handle: Element.Handle) void {
+//     if (!self.isValid(handle)) return;
 
-    const element = self.getMut(handle);
-    element.isDirty = true;
-    if (element.parent.eql(.invalid)) {
-        return;
-    }
+//     const element = self.getMut(handle);
+//     element.isDirty = true;
+//     if (element.parent.eql(.invalid)) {
+//         return;
+//     }
 
-    var cur_parent_element_handle: Element.Handle = element.parent;
-    while (!cur_parent_element_handle.isInvalid()) {
-        const parent_element = self.getMut(cur_parent_element_handle);
-        if (parent_element.childIsDirty) break;
+//     var cur_parent_element_handle: Element.Handle = element.parent;
+//     while (!cur_parent_element_handle.isInvalid()) {
+//         const parent_element = self.getMut(cur_parent_element_handle);
+//         if (parent_element.childIsDirty) break;
 
-        parent_element.childIsDirty = true;
-        cur_parent_element_handle = parent_element.parent;
-    }
-}
+//         parent_element.childIsDirty = true;
+//         cur_parent_element_handle = parent_element.parent;
+//     }
+// }
 
 pub inline fn isFocused(self: *const Tree, handle: Element.Handle) bool {
     return self.focused_element.eql(handle);
@@ -378,12 +390,12 @@ fn writeDebugTreeElementInternal(self: *const Tree, fixed_allocator: *std.heap.F
         }
 
         {
-            const ctx = Element.GetDebugIdContext{
+            const ctx = Element.GetDebugStrContext{
                 .allocator = allocator,
                 .tree = self,
             };
             defer fixed_allocator.reset();
-            const child_id = child.interface.getDebugId(&ctx) catch return error.WriteFailed;
+            const child_id = child.interface.getDebugStr(&ctx) catch return error.WriteFailed;
 
             try writer.print("{f} ", .{child_handle});
             try writer.writeAll(child_id);

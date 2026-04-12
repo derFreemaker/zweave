@@ -34,7 +34,7 @@ pub fn element(self: *TextInput) Element.Interface {
     } };
 }
 
-fn getDebugStr(self_ctx: Element.SelfContext, ctx: *const Element.GetDebugIdContext) Element.GetDebugIdError![]const u8 {
+fn getDebugStr(self_ctx: Element.SelfContext, ctx: *const Element.GetDebugStrContext) Element.GetDebugStrError![]const u8 {
     _ = self_ctx;
     _ = ctx;
 
@@ -160,7 +160,7 @@ fn onEvent(self_ctx: Element.SelfContext, ctx: *Element.OnEventContext) Element.
                 if (self.buf.canMoveGapLeft(1)) {
                     _ = self.buf.moveGapLeft(1);
 
-                    ctx.tree.markDirty(self_ctx.handle);
+                    // ctx.tree.markDirty(self_ctx.handle);
                     self.cached_size = null;
                 }
             } else if (key_press.matches(.right, .{})) {
@@ -169,7 +169,7 @@ fn onEvent(self_ctx: Element.SelfContext, ctx: *Element.OnEventContext) Element.
                 if (self.buf.canMoveGapRight(1)) {
                     _ = self.buf.moveGapRight(1);
 
-                    ctx.tree.markDirty(self_ctx.handle);
+                    // ctx.tree.markDirty(self_ctx.handle);
                     self.cached_size = null;
                 }
             } else if (key_press.matches(.backspace, .{})) {
@@ -178,7 +178,7 @@ fn onEvent(self_ctx: Element.SelfContext, ctx: *Element.OnEventContext) Element.
                 if (self.buf.canGrowGapLeft(1)) {
                     self.buf.growGapLeft(1);
 
-                    ctx.tree.markDirty(self_ctx.handle);
+                    // ctx.tree.markDirty(self_ctx.handle);
                     self.cached_size = null;
                 }
             } else if (key_press.text != .empty) {
@@ -186,7 +186,7 @@ fn onEvent(self_ctx: Element.SelfContext, ctx: *Element.OnEventContext) Element.
 
                 try self.buf.insertGrapheme(self.allocator, key_press.text.get());
 
-                ctx.tree.markDirty(self_ctx.handle);
+                // ctx.tree.markDirty(self_ctx.handle);
                 self.cached_size = null;
             }
         },
@@ -196,7 +196,7 @@ fn onEvent(self_ctx: Element.SelfContext, ctx: *Element.OnEventContext) Element.
 
             try self.buf.insertGraphemeSlice(self.allocator, paste);
 
-            ctx.tree.markDirty(self_ctx.handle);
+            // ctx.tree.markDirty(self_ctx.handle);
             self.cached_size = null;
         },
 

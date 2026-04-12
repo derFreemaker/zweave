@@ -117,6 +117,10 @@ pub fn HandleT(comptime ParentT: type, comptime T: type) type {
             return self.index == .invalid;
         }
 
+        pub inline fn notInvalid(self: Self) ?Self {
+            return if (self.isInvalid()) null else self;
+        }
+
         index: Indexes.IndexT(Self, T),
         generation: if (buildingSafe) T else void,
 

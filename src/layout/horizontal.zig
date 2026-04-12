@@ -9,9 +9,9 @@ pub const Options = struct {
 };
 
 pub fn layout(handle: Element.Handle, ctx: *const Element.ComputeLayoutContext, opts: Options) Element.ComputeLayoutError!ScreenVec {
-    if (!ctx.tree.get(handle).isDirty and !ctx.tree.get(handle).childIsDirty) {
-        return ctx.tree.getLayoutData(handle).size;
-    }
+    // if (!ctx.tree.get(handle).isDirty and !ctx.tree.get(handle).childIsDirty) {
+    //     return ctx.tree.getLayoutData(handle).size;
+    // }
 
     // @TODO: maybe abstract some logic into more easily understandable blocks for easier creation of other layout alogs
     // @IMPROVE
@@ -22,7 +22,7 @@ pub fn layout(handle: Element.Handle, ctx: *const Element.ComputeLayoutContext, 
     while (available_height > 0 and !child_iter.isEmpty()) {
         var available = ScreenVec{
             .x = ctx.available.x,
-            .y = if (row_pos == 0) available_height else available_height - @min(opts.gap.y, available_height),
+            .y = if (row_pos == 0) available_height else available_height -| opts.gap.y,
         };
         var row_size: ScreenVec = .zero;
         while (available.x > 0 and !child_iter.isEmpty()) {
@@ -30,7 +30,7 @@ pub fn layout(handle: Element.Handle, ctx: *const Element.ComputeLayoutContext, 
             const child = ctx.tree.get(child_handle);
 
             const child_available = ScreenVec{
-                .x = if (row_size.x == 0) available.x else available.x - @min(available.x, opts.gap.x),
+                .x = if (row_size.x == 0) available.x else available.x -| opts.gap.x,
                 .y = available.y,
             };
             const child_layout_ctx = ctx.child(child_available);
@@ -41,7 +41,7 @@ pub fn layout(handle: Element.Handle, ctx: *const Element.ComputeLayoutContext, 
             const total_child_width = if (row_size.x == 0) child_requested_size.x else child_requested_size.x + opts.gap.x;
             if (total_child_width <= available.x) {
                 child_data.pos = ScreenVec{
-                    .x = row_size.x,
+                    .x = row_size.x + if (row_size.x == 0) 0 else opts.gap.x,
                     .y = row_pos,
                 };
                 child_data.size = ScreenVec{
@@ -49,7 +49,7 @@ pub fn layout(handle: Element.Handle, ctx: *const Element.ComputeLayoutContext, 
                     .y = @min(child_requested_size.y, available.y),
                 };
 
-                available.x -= total_child_width;
+                available.x -|= total_child_width;
                 row_size.x += total_child_width;
                 row_size.y = @max(row_size.y, @min(child_requested_size.y, available.y));
             } else {
@@ -71,6 +71,7 @@ pub fn layout(handle: Element.Handle, ctx: *const Element.ComputeLayoutContext, 
                 }
             }
 
+            // child.isDirty = false;
             child_iter.toss();
         }
 
@@ -78,12 +79,12 @@ pub fn layout(handle: Element.Handle, ctx: *const Element.ComputeLayoutContext, 
             break;
         }
 
+        std.debug.assert(row_size.x <= ctx.available.x);
         max_row_width = @max(max_row_width, row_size.x);
-        std.debug.assert(max_row_width <= ctx.available.x);
 
         const total_row_height = row_size.y + if (row_pos == 0) 0 else opts.gap.y;
         std.debug.assert(total_row_height <= available_height);
-        available_height -= total_row_height;
+        available_height -|= total_row_height;
         row_pos += total_row_height;
     }
 

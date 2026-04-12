@@ -15,6 +15,8 @@ pub const SegmentHandle = ScreenStore.SegmentHandle;
 
 pub const Widgets = struct {
     pub const Container = @import("widgets/container.zig");
+    pub const Frame = @import("widgets/frame.zig");
+
     pub const Screen = @import("widgets/screen.zig");
     pub const TextInput = @import("widgets/text_input.zig");
 };

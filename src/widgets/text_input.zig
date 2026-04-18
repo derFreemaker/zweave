@@ -181,6 +181,13 @@ fn onEvent(self_ctx: Element.SelfContext, ctx: *Element.OnEventContext) Element.
                     // ctx.tree.markDirty(self_ctx.handle);
                     self.cached_size = null;
                 }
+            } else if (key_press.matches(.enter, .{})) {
+                ctx.consume();
+
+                try self.buf.insertGrapheme(self.allocator, "\n");
+
+                // ctx.tree.markDirty(self_ctx.handle);
+                self.cached_size = null;
             } else if (key_press.text != .empty) {
                 ctx.consume();
 

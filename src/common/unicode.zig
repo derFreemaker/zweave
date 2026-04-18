@@ -17,10 +17,10 @@ pub const GraphemeClusterIterator = struct {
     }
 
     pub fn next(self: *GraphemeClusterIterator) ?GraphemeCluster {
-        while (self.inner.next()) |res| {
+        while (self.inner.nextCodePoint()) |res| {
             // when leaving a break and entering a non-break, set the start of a cluster
             if (self.prev_break and !res.is_break) {
-                const cp_len: usize = std.unicode.utf8CodepointSequenceLength(res.cp) catch 1;
+                const cp_len: usize = std.unicode.utf8CodepointSequenceLength(res.code_point) catch 1;
                 self.start = self.inner.i - cp_len;
             }
 

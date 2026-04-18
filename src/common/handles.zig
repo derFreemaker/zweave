@@ -117,7 +117,7 @@ pub fn HandleT(comptime ParentT: type, comptime T: type) type {
             return self.index == .invalid;
         }
 
-        pub inline fn notInvalid(self: Self) ?Self {
+        pub inline fn maybeValid(self: Self) ?Self {
             return if (self.isInvalid()) null else self;
         }
 

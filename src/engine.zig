@@ -21,7 +21,6 @@ render_allocator: CountingAllocator,
 arena: std.heap.ArenaAllocator,
 
 adapter: zttio.Adapters.NativeAdapter,
-parser: zttio.Parsers.NormalParser,
 tty: zttio.Tty,
 tree: Tree,
 screen_store: ScreenStore,
@@ -34,58 +33,63 @@ stats_style: ScreenStore.StyleHandle,
 show_stats: bool,
 show_debug_tree: bool,
 
-prev_frame_render_time: i64,
-prev_frame_flush_time: i64,
+prev_frame_render_time: std.Io.Duration,
+prev_frame_flush_time: std.Io.Duration,
 
 pub const InitError = error{UnableToInitTty} || std.mem.Allocator.Error;
 
-pub fn init_(self: *Engine, allocator: std.mem.Allocator, event_allocator: std.mem.Allocator) InitError!void {
-    self.allocator = allocator;
-    self.tree_allocator = CountingAllocator.init(allocator);
-    self.render_allocator = CountingAllocator.init(allocator);
-    self.arena = std.heap.ArenaAllocator.init(allocator);
+pub fn init(allocator: std.mem.Allocator, event_allocator: std.mem.Allocator, io: std.Io, env_map: *const std.process.Environ.Map) InitError!*Engine {
+    const ptr = try allocator.create(Engine);
+    errdefer allocator.destroy(ptr);
 
-    self.adapter = zttio.Adapters.NativeAdapter.init(allocator, .stdin(), .stdout()) catch return error.UnableToInitTty;
-    self.parser = zttio.Parsers.NormalParser.init(allocator, event_allocator, self.adapter.adapter());
-    self.tty = zttio.Tty.init(
+    ptr.allocator = allocator;
+    ptr.tree_allocator = CountingAllocator.init(allocator);
+    ptr.render_allocator = CountingAllocator.init(allocator);
+    ptr.arena = std.heap.ArenaAllocator.init(allocator);
+
+    ptr.adapter = zttio.Adapters.NativeAdapter.init(allocator, io, .stdin(), .stdout()) catch return error.UnableToInitTty;
+    ptr.tty = zttio.Tty.init(
         allocator,
-        self.parser.parser(),
+        event_allocator,
+        ptr.adapter.adapter(),
         .{
-            .caps = zttio.TerminalCapabilities.query(self.adapter.adapter(), 100) catch return error.UnableToInitTty,
+            .caps = zttio.TerminalCapabilities.query(io, env_map, ptr.adapter.adapter(), .fromMilliseconds(100)) catch return error.UnableToInitTty,
         },
     ) catch return error.UnableToInitTty;
-    errdefer self.tty.deinit();
+    errdefer ptr.tty.deinit();
 
-    self.tree = try Tree.init(self.tree_allocator.allocator());
-    errdefer self.tree.deinit();
+    ptr.tree = try Tree.init(ptr.tree_allocator.allocator());
+    errdefer ptr.tree.deinit();
 
-    self.screen_store = try ScreenStore.init(self.render_allocator.allocator());
-    errdefer self.screen_store.deinit();
+    ptr.screen_store = try ScreenStore.init(ptr.render_allocator.allocator());
+    errdefer ptr.screen_store.deinit();
 
-    const winsize = self.tty.getWinsize();
+    const winsize = ptr.tty.getWinsize();
     const screen_size = ScreenVec{ .x = winsize.cols, .y = winsize.rows };
-    self.renderer = try Renderer.init(self.render_allocator.allocator(), screen_size, self.tty.caps.unicode_width_method);
-    errdefer self.renderer.deinit(allocator);
+    ptr.renderer = try Renderer.init(ptr.render_allocator.allocator(), screen_size, ptr.tty.caps.unicode_width_method);
+    errdefer ptr.renderer.deinit(allocator);
 
-    self.root_container = Container{
+    ptr.root_container = Container{
         .gap = .{
             .x = 2,
             .y = 1,
         },
     };
-    self.root = try self.tree.create(self.root_container.element());
-    errdefer self.tree.destroy(self.root);
+    ptr.root = try ptr.tree.create(ptr.root_container.element());
+    errdefer ptr.tree.destroy(ptr.root);
 
-    self.stats_style = try self.screen_store.addStyle(Style{
+    ptr.stats_style = try ptr.screen_store.addStyle(Style{
         .background = .{ .c8 = .black },
         .foreground = .{ .c8 = .bright_green },
     });
-    errdefer self.screen_store.removeStyle(self.stats_style);
-    self.show_stats = false;
-    self.show_debug_tree = false;
+    errdefer ptr.screen_store.removeStyle(ptr.stats_style);
+    ptr.show_stats = false;
+    ptr.show_debug_tree = false;
 
-    self.prev_frame_render_time = 0;
-    self.prev_frame_flush_time = 0;
+    ptr.prev_frame_render_time = .zero;
+    ptr.prev_frame_flush_time = .zero;
+
+    return ptr;
 }
 
 pub fn deinit(self: *Engine) void {
@@ -96,8 +100,9 @@ pub fn deinit(self: *Engine) void {
     self.tree.deinit();
 
     self.tty.deinit();
-    self.parser.deinit();
     self.adapter.deinit(self.allocator);
+
+    self.allocator.destroy(self);
 }
 
 pub inline fn resize(self: *Engine, new_size: ScreenVec) std.mem.Allocator.Error!void {
@@ -170,14 +175,14 @@ fn computeLayout(self: *Engine, allocator: std.mem.Allocator, screen: *Screen, r
     return needed_space;
 }
 
-pub fn renderNextFrame(self: *Engine) Renderer.RenderError!void {
+pub fn renderNextFrame(self: *Engine, io: std.Io) Renderer.RenderError!void {
     const trace_zone = tracy.Zone.begin(.{
         .name = "[Engine]: renderNextFrame",
         .src = @src(),
     });
     defer trace_zone.end();
 
-    const start_render = std.time.microTimestamp();
+    const start_render = std.Io.Timestamp.now(io, .real);
 
     _ = self.arena.reset(.{ .retain_with_limit = 8 * 1024 * 1024 });
     var trace_allocator = tracy.Allocator{
@@ -225,11 +230,11 @@ pub fn renderNextFrame(self: *Engine) Renderer.RenderError!void {
 
     try self.renderer.render(&self.screen_store, &self.tty);
 
-    const end_render = std.time.microTimestamp();
-    self.prev_frame_render_time = end_render - start_render;
+    const end_render = std.Io.Timestamp.now(io, .real);
+    self.prev_frame_render_time = start_render.durationTo(end_render);
 
     {
-        const start_flush = std.time.microTimestamp();
+        const start_flush = std.Io.Timestamp.now(io, .real);
 
         const flush_trace_zone = tracy.Zone.begin(.{
             .name = "[Engine]: flush to terminal",
@@ -239,8 +244,8 @@ pub fn renderNextFrame(self: *Engine) Renderer.RenderError!void {
 
         try self.tty.flush();
 
-        const end_flush = std.time.microTimestamp();
-        self.prev_frame_flush_time = end_flush - start_flush;
+        const end_flush = std.Io.Timestamp.now(io, .real);
+        self.prev_frame_flush_time = start_flush.durationTo(end_flush);
     }
 }
 
@@ -292,7 +297,7 @@ fn writeStats(self: *const Engine) std.Io.Writer.Error!void {
         try writer.writeByte('\n');
     }
 
-    _ = try writer.print("prev Frame Time: {d}µs - {d}µs\n", .{ self.prev_frame_render_time, self.prev_frame_flush_time });
+    _ = try writer.print("prev Frame Time: {f} - {f}\n", .{ self.prev_frame_render_time, self.prev_frame_flush_time });
 
     try writer.print("caps: {any}\n", .{self.tty.caps});
 

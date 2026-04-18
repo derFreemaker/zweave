@@ -67,7 +67,10 @@ pub fn deinit(self: *ScreenStore) void {
     self.segments.deinit(self.allocator);
 }
 
+/// Asserts that there is no '\n' or '\r' in the provided string content.
 pub fn addStr(self: *ScreenStore, str_content: []const u8) std.mem.Allocator.Error!StrHandle {
+    std.debug.assert(std.mem.findAny(u8, str_content, "\n\r") == null);
+
     const handle = try self.str_store.create(self.allocator);
     if (handle.index.value() > self.strs.capacity) {
         try self.strs.ensureTotalCapacity(self.allocator, self.strs.capacity + 1);

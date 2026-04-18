@@ -40,7 +40,7 @@ const Block = struct {
     }
 };
 
-pub fn main() !u8 {
+pub fn main(init: std.process.Init) !u8 {
     var gpa: std.heap.DebugAllocator(if (builtin.mode != .Debug) .{} else .{
         .retain_metadata = true,
         .never_unmap = true,
@@ -55,13 +55,12 @@ pub fn main() !u8 {
     };
     const event_allocator = trace_event_allocator.allocator();
 
-    var engine: zweave.Engine = undefined;
-    try zweave.Engine.init_(&engine, allocator, event_allocator);
+    var engine = try zweave.Engine.init(allocator, event_allocator, init.io, init.environ_map);
     global_tty = &engine.tty;
     defer {
         engine.tty.flush() catch {};
-        engine.deinit();
         global_tty = null;
+        engine.deinit();
     }
 
     try engine.tty.enableAndResetAlternativeScreen();
@@ -95,8 +94,14 @@ pub fn main() !u8 {
     const block_handle = try engine.tree.create(block.element());
     defer engine.tree.destroy(block_handle);
 
+    const frame_label_handle = try engine.screen_store.addStr(zweave.BoxDrawing.DoubleVerticalAndLeft ++ " test input " ++ zweave.BoxDrawing.DoubleVerticalAndRight);
+    defer engine.screen_store.removeStr(frame_label_handle);
+
     var frame = zweave.Widgets.Frame{
-        .border = .line,
+        .border = .double,
+
+        .label = frame_label_handle,
+        .label_col = 1,
     };
     const frame_handle = try engine.tree.create(frame.element());
     defer engine.tree.destroy(frame_handle);
@@ -106,10 +111,10 @@ pub fn main() !u8 {
         .width_method = engine.tty.caps.unicode_width_method,
     });
     defer screen.deinit(allocator);
-    const screen_handle = try engine.tree.create(screen.element());
-    defer engine.tree.destroy(screen_handle);
     var screen_view_writer = screen.view.writer(&.{});
     const screen_writer = &screen_view_writer.writer;
+    const screen_handle = try engine.tree.create(screen.element());
+    defer engine.tree.destroy(screen_handle);
 
     var input = try zweave.Widgets.TextInput.init(allocator);
     defer input.deinit();
@@ -148,7 +153,7 @@ pub fn main() !u8 {
                     } else {
                         engine.tree.removeFocus();
                     }
-                } else if (key_press.matches(.enter, .{})) {
+                } else if (key_press.matchExact(.enter, .{ .shift = true })) {
                     if (engine.tree.isFocused(input_handle)) {
                         try screen_writer.writeAll(input.buf.firstHalf());
                         try screen_writer.writeAll(input.buf.secondHalf());
@@ -173,7 +178,7 @@ pub fn main() !u8 {
             }
         }
 
-        try engine.renderNextFrame();
+        try engine.renderNextFrame(init.io);
     }
 
     return 0;
@@ -191,15 +196,3 @@ pub fn testPanic(msg: []const u8, ret_addr: ?usize) noreturn {
 }
 
 pub const tracy_impl = @import("tracy_impl");
-pub const tracy_options: tracy.Options = .{
-    .on_demand = false,
-    .no_broadcast = false,
-    .only_localhost = false,
-    .only_ipv4 = false,
-    .delayed_init = false,
-    .manual_lifetime = false,
-    .verbose = true,
-    .data_port = null,
-    .broadcast_port = null,
-    .default_callstack_depth = 20,
-};

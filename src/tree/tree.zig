@@ -109,6 +109,13 @@ pub fn create(self: *Tree, interface: Element.Interface) Element.RegisterError!E
 
 pub fn destroy(self: *Tree, handle: Element.Handle) void {
     if (!self.isValid(handle)) return;
+    const element = self.get(handle);
+
+    const ctx = Element.UnregisterContext{
+        .tree = self,
+    };
+    element.interface.unregister(&ctx);
+
     self.removeChild(handle);
 
     var child_iter = self.childs(handle);

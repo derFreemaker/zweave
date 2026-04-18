@@ -21,7 +21,14 @@ pub const Widgets = struct {
     pub const TextInput = @import("widgets/text_input.zig");
 };
 
+pub const Symbols = struct {
+    pub const BoxDrawing = @import("symbols/box_drawing.zig");
+};
+
 test {
+    _ = @import("common/gap_buffer.zig");
+    _ = @import("tree/tree.zig");
+
     const std = @import("std");
-    std.testing.refAllDeclsRecursive(@This());
+    std.testing.refAllDecls(@This());
 }

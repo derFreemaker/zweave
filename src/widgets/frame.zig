@@ -16,6 +16,9 @@ padding: Padding = .{ .sides = .{
 border: Border = .none,
 boder_style: BorderStyle = .{},
 
+label_col: u16 = 0,
+label: ScreenStore.StrHandle = .invalid,
+
 pub fn element(self: *Frame) Element.Interface {
     return Element.Interface{ .ptr = self, .vtable = &Element.Interface.VTable{
         .getDebugStr = getDebugStr,
@@ -38,7 +41,7 @@ fn computeLayout(self_ctx: Element.SelfContext, ctx: *const Element.ComputeLayou
     //     return ctx.tree.getLayoutData(self_ctx.handle).size;
     // }
 
-    const child_handle = self_element.first_child.notInvalid() orelse {
+    const child_handle = self_element.first_child.maybeValid() orelse {
         return .zero;
     };
 
@@ -93,6 +96,22 @@ fn draw(self_ctx: Element.SelfContext, ctx: *const Element.DrawContext) Element.
                 .style = self.boder_style.top_left,
             });
 
+            if (ctx.view.size.x > 2) {
+                ctx.view.fill(null, 0, 1, 1, ctx.view.size.x - 2, symbols.top, .{
+                    .style = self.boder_style.top,
+                });
+
+                if (self.label.maybeValid()) |label_handle| {
+                    _ = try ctx.view.write(0, 1 + self.label_col, ctx.screen_store.getStr(label_handle), .{
+                        .max_width = ctx.view.size.x -| 2 -| self.label_col,
+                    });
+                }
+
+                ctx.view.fill(null, ctx.view.size.y -| 1, 1, 1, ctx.view.size.x - 2, symbols.bottom, .{
+                    .style = self.boder_style.bottom,
+                });
+            }
+
             _ = ctx.view.writeCell(null, 0, ctx.view.size.x -| 1, symbols.top_right, .{
                 .style = self.boder_style.top_right,
             });
@@ -100,20 +119,6 @@ fn draw(self_ctx: Element.SelfContext, ctx: *const Element.DrawContext) Element.
             _ = ctx.view.writeCell(null, ctx.view.size.y -| 1, 0, symbols.bottom_left, .{
                 .style = self.boder_style.bottom_left,
             });
-
-            _ = ctx.view.writeCell(null, ctx.view.size.y -| 1, ctx.view.size.x -| 1, symbols.bottom_right, .{
-                .style = self.boder_style.bottom_right,
-            });
-
-            if (ctx.view.size.x > 2) {
-                ctx.view.fill(null, 0, 1, 1, ctx.view.size.x - 2, symbols.top, .{
-                    .style = self.boder_style.top,
-                });
-
-                ctx.view.fill(null, ctx.view.size.y -| 1, 1, 1, ctx.view.size.x - 2, symbols.bottom, .{
-                    .style = self.boder_style.bottom,
-                });
-            }
 
             if (ctx.view.size.y > 2) {
                 ctx.view.fill(null, 1, 0, ctx.view.size.y - 2, 1, symbols.left, .{
@@ -124,11 +129,15 @@ fn draw(self_ctx: Element.SelfContext, ctx: *const Element.DrawContext) Element.
                     .style = self.boder_style.right,
                 });
             }
+
+            _ = ctx.view.writeCell(null, ctx.view.size.y -| 1, ctx.view.size.x -| 1, symbols.bottom_right, .{
+                .style = self.boder_style.bottom_right,
+            });
         },
     }
 
     const self_element = ctx.tree.get(self_ctx.handle);
-    const child_handle = self_element.first_child.notInvalid() orelse {
+    const child_handle = self_element.first_child.maybeValid() orelse {
         return;
     };
 

@@ -30,6 +30,7 @@ pub const Interface = struct {
     pub const VTable = struct {
         getDebugStr: ?*const fn (self_ctx: SelfContext, ctx: *const GetDebugStrContext) GetDebugStrError![]const u8 = null,
         register: ?*const fn (self_ctx: SelfContext, ctx: *const RegisterContext) RegisterError!void = null,
+        unregister: ?*const fn (self_ctx: SelfContext, ctx: *const UnregisterContext) void = null,
 
         computeLayout: ?*const fn (self_ctx: SelfContext, ctx: *const ComputeLayoutContext) ComputeLayoutError!ScreenVec = null,
         draw: *const fn (self_ctx: SelfContext, ctx: *const DrawContext) DrawError!void,
@@ -83,6 +84,12 @@ pub const Interface = struct {
 
     pub fn register(self: Interface, ctx: *const RegisterContext) RegisterError!void {
         if (self.vtable.register) |func| {
+            return func(self.context(), ctx);
+        }
+    }
+
+    pub fn unregister(self: Interface, ctx: *const UnregisterContext) void {
+        if (self.vtable.unregister) |func| {
             return func(self.context(), ctx);
         }
     }
@@ -141,6 +148,12 @@ pub const GetDebugStrContext = struct {
 pub const RegisterError = std.mem.Allocator.Error;
 
 pub const RegisterContext = struct {
+    const Context = @This();
+
+    tree: *Tree,
+};
+
+pub const UnregisterContext = struct {
     const Context = @This();
 
     tree: *Tree,

@@ -118,8 +118,8 @@ pub fn writeCell(self: *const View, store: ?*const ScreenStore, row: u16, col: u
     const cell_idx = self.getCellIndex(row, col);
     if (opts.max_width) |max_width| {
         if (width > max_width) {
-            @memset(screen.buf[cell_idx.value() + 1 .. cell_idx.value() + max_width], Cell{
-                .content = .wide_continuation,
+            @memset(screen.buf[cell_idx.value() .. cell_idx.value() + max_width], Cell{
+                .content = .empty,
 
                 .style = opts.style,
                 .segment = opts.segment,
@@ -130,8 +130,8 @@ pub fn writeCell(self: *const View, store: ?*const ScreenStore, row: u16, col: u
     }
     if (self.pos.x + col + width > screen.size.x) {
         const remaining_width = screen.size.x - self.pos.x + col;
-        @memset(screen.buf[cell_idx.value() + 1 .. cell_idx.value() + remaining_width], Cell{
-            .content = .wide_continuation,
+        @memset(screen.buf[cell_idx.value() .. cell_idx.value() + remaining_width], Cell{
+            .content = .empty,
 
             .style = opts.style,
             .segment = opts.segment,
@@ -255,6 +255,7 @@ pub const WriteOptions = struct {
     segment: ScreenStore.SegmentHandle = .invalid,
 };
 
+/// Only allocates if a grapheme cluster is bigger than `Cell.CONTENT_SHORT_STR_MAX_LENGTH`.
 pub fn write(self: *const View, row: u16, col: u16, content: []const u8, opts: WriteOptions) std.mem.Allocator.Error!ScreenVec {
     const trace_zone = tracy.Zone.begin(.{
         .name = "[ScreenView]: write",

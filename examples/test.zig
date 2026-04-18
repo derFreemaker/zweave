@@ -94,7 +94,7 @@ pub fn main(init: std.process.Init) !u8 {
     const block_handle = try engine.tree.create(block.element());
     defer engine.tree.destroy(block_handle);
 
-    const frame_label_handle = try engine.screen_store.addStr(zweave.BoxDrawing.DoubleVerticalAndLeft ++ " test input " ++ zweave.BoxDrawing.DoubleVerticalAndRight);
+    const frame_label_handle = try engine.screen_store.addStr(zweave.Symbols.BoxDrawing.DoubleVerticalAndLeft ++ " test input " ++ zweave.Symbols.BoxDrawing.DoubleVerticalAndRight);
     defer engine.screen_store.removeStr(frame_label_handle);
 
     var frame = zweave.Widgets.Frame{

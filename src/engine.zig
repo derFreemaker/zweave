@@ -297,7 +297,7 @@ fn writeStats(self: *const Engine) std.Io.Writer.Error!void {
         try writer.writeByte('\n');
     }
 
-    _ = try writer.print("prev Frame Time: {f} - {f}\n", .{ self.prev_frame_render_time, self.prev_frame_flush_time });
+    _ = try writer.print("prev Frame Time: {f} (engine) - {f} (flush)\n", .{ self.prev_frame_render_time, self.prev_frame_flush_time });
 
     try writer.print("caps: {any}\n", .{self.tty.caps});
 

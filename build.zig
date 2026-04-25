@@ -46,24 +46,28 @@ pub fn build(b: *std.Build) void {
 
     importTracy(tracy_enabled, tracy, zweave_mod);
 
-    if (b.option(bool, "examples", "build examples") orelse false) {
-        const test_example_mod = b.createModule(.{
-            .target = target,
-            .optimize = optimize,
+    const example_mod = b.createModule(.{
+        .target = target,
+        .optimize = optimize,
 
-            .root_source_file = b.path("examples/test.zig"),
-            .imports = &.{
-                .{ .name = "zttio", .module = zttio_mod },
-                .{ .name = "zweave", .module = zweave_mod },
-            },
-        });
-        importTracy(tracy_enabled, tracy, test_example_mod);
+        .root_source_file = b.path("example.zig"),
+        .imports = &.{
+            .{ .name = "zttio", .module = zttio_mod },
+            .{ .name = "zweave", .module = zweave_mod },
+        },
+    });
+    importTracy(tracy_enabled, tracy, example_mod);
 
-        const test_example = b.addExecutable(.{
-            .name = "test_example",
-            .root_module = test_example_mod,
-        });
-        b.installArtifact(test_example);
+    const example = b.addExecutable(.{
+        .name = "example",
+        .root_module = example_mod,
+    });
+    const example_run = b.step("run-example", "run example");
+    const example_cmd = b.addRunArtifact(example);
+    example_run.dependOn(&example_cmd.step);
+    example_cmd.step.dependOn(&example.step);
+    if (b.args) |args| {
+        example_cmd.addArgs(args);
     }
 }
 

@@ -36,6 +36,7 @@ pub const Interface = struct {
         draw: *const fn (self_ctx: SelfContext, ctx: *const DrawContext) DrawError!void,
 
         onEvent: ?*const fn (self_ctx: SelfContext, ctx: *OnEventContext) OnEventError!void = passEventToChildren,
+        onClick: ?*const fn (self_ctx: SelfContext, ctx: *OnClickContext) OnClickError!void = passClickToChild,
     };
 
     ptr: *anyopaque,
@@ -111,17 +112,13 @@ pub const Interface = struct {
             return func(self.context(), ctx);
         }
     }
-};
 
-pub fn passEventToChildren(self_ctx: SelfContext, ctx: *OnEventContext) OnEventError!void {
-    var child_iter = ctx.tree.childs(self_ctx.handle);
-    while (child_iter.peek()) |child_handle| : (child_iter.toss()) {
-        if (ctx.consumed) break;
-        const child = ctx.tree.get(child_handle);
-
-        try child.interface.onEvent(ctx);
+    pub fn onClick(self: Interface, ctx: *OnClickContext) OnEventError!void {
+        if (self.vtable.onClick) |func| {
+            return func(self.context(), ctx);
+        }
     }
-}
+};
 
 pub const SelfContext = struct {
     ptr: *anyopaque,
@@ -228,3 +225,51 @@ pub const OnEventContext = struct {
         self.consumed = true;
     }
 };
+
+pub fn passEventToChildren(self_ctx: SelfContext, ctx: *OnEventContext) OnEventError!void {
+    var child_iter = ctx.tree.childs(self_ctx.handle);
+    while (child_iter.peek()) |child_handle| : (child_iter.toss()) {
+        const child = ctx.tree.get(child_handle);
+        try child.interface.onEvent(ctx);
+
+        if (ctx.consumed) break;
+    }
+}
+
+pub const OnClickError = std.mem.Allocator.Error;
+
+pub const OnClickContext = struct {
+    const Context = @This();
+
+    tree: *Tree,
+
+    pos: ScreenVec,
+
+    pub inline fn child(self: *const Context, pos: ScreenVec) OnClickContext {
+        return OnClickContext{
+            .tree = self.tree,
+
+            .pos = pos,
+        };
+    }
+};
+
+pub fn passClickToChild(self_ctx: SelfContext, ctx: *OnClickContext) OnClickError!void {
+    var child_iter = ctx.tree.childs(self_ctx.handle);
+    while (child_iter.peek()) |child_handle| : (child_iter.toss()) {
+        const child_data = ctx.tree.getLayoutData(child_handle);
+        if (!child_data.pos.inside(ctx.pos)) {
+            continue;
+        }
+
+        const rel_pos = ctx.pos.sub(child_data.pos);
+        if (!rel_pos.inside(child_data.size)) {
+            continue;
+        }
+
+        const child = ctx.tree.get(child_handle);
+        var child_ctx = ctx.child(rel_pos);
+        try child.interface.onClick(&child_ctx);
+        break;
+    }
+}

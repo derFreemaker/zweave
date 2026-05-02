@@ -31,6 +31,7 @@ pub fn element(self: *TextInput) Element.Interface {
         .draw = draw,
 
         .onEvent = onEvent,
+        .onClick = onClick,
     } };
 }
 
@@ -209,4 +210,14 @@ fn onEvent(self_ctx: Element.SelfContext, ctx: *Element.OnEventContext) Element.
 
         else => {},
     }
+}
+
+fn onClick(self_ctx: Element.SelfContext, ctx: *Element.OnClickContext) Element.OnClickError!void {
+    _ = ctx;
+
+    const self = self_ctx.get(TextInput);
+    try self.buf.insertGraphemeSlice(self.allocator, "<clicked>");
+
+    // ctx.tree.markDirty(self_ctx.handle);
+    self.cached_size = null;
 }

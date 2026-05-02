@@ -136,6 +136,28 @@ pub fn dispatchEvent(self: *Engine, event: *const Event) std.mem.Allocator.Error
         .event = event,
     };
     try root.interface.onEvent(&ctx);
+
+    if (ctx.consumed) {
+        return;
+    }
+
+    switch (event.*) {
+        .mouse => |mouse| {
+            if (mouse.button != .left or mouse.type != .press) {
+                return;
+            }
+
+            var click_ctx = Element.OnClickContext{
+                .tree = &self.tree,
+                .pos = .{
+                    .x = @intCast(mouse.col),
+                    .y = @intCast(mouse.row),
+                },
+            };
+            try root.interface.onClick(&click_ctx);
+        },
+        else => {},
+    }
 }
 
 pub fn dispatchEventToFocusedElement(self: *Engine, event: *const Event) std.mem.Allocator.Error!void {

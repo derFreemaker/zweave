@@ -23,7 +23,7 @@ pub fn scale(self: ScreenVec, x: f32, y: f32) ScreenVec {
     };
 }
 
-/// clamps into zero
+/// clamps to zero
 pub inline fn sub(self: ScreenVec, other: ScreenVec) ScreenVec {
     return ScreenVec{
         .x = self.x -| other.x,
@@ -42,5 +42,12 @@ pub inline fn min(self: ScreenVec, other: ScreenVec) ScreenVec {
     return ScreenVec{
         .x = @min(self.x, other.x),
         .y = @min(self.y, other.y),
+    };
+}
+
+pub inline fn max(self: ScreenVec, other: ScreenVec) ScreenVec {
+    return ScreenVec{
+        .x = @max(self.x, other.x),
+        .y = @max(self.y, other.y),
     };
 }

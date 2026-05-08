@@ -14,7 +14,7 @@ padding: Padding = .{ .sides = .{
     .right = 1,
 } },
 border: Border = .none,
-boder_style: BorderStyle = .{},
+border_style: BorderStyle = .{},
 
 label_col: u16 = 0,
 label: ScreenStore.StrHandle = .invalid,
@@ -89,16 +89,20 @@ fn computeLayout(self_ctx: Element.SelfContext, ctx: *const Element.ComputeLayou
 fn draw(self_ctx: Element.SelfContext, ctx: *const Element.DrawContext) Element.DrawError!void {
     const self = self_ctx.get(Frame);
 
-    switch (self.border) {
+    draw_frame: switch (self.border) {
         .none => {},
         .single_cell => |symbols| {
+            if (ctx.view.size.x < 2) {
+                break :draw_frame;
+            }
+
             _ = ctx.view.writeCell(null, 0, 0, symbols.top_left, .{
-                .style = self.boder_style.top_left,
+                .style = self.border_style.top_left,
             });
 
             if (ctx.view.size.x > 2) {
                 ctx.view.fill(null, 0, 1, 1, ctx.view.size.x - 2, symbols.top, .{
-                    .style = self.boder_style.top,
+                    .style = self.border_style.top,
                 });
 
                 if (self.label.maybeValid()) |label_handle| {
@@ -108,30 +112,30 @@ fn draw(self_ctx: Element.SelfContext, ctx: *const Element.DrawContext) Element.
                 }
 
                 ctx.view.fill(null, ctx.view.size.y -| 1, 1, 1, ctx.view.size.x - 2, symbols.bottom, .{
-                    .style = self.boder_style.bottom,
+                    .style = self.border_style.bottom,
                 });
             }
 
             _ = ctx.view.writeCell(null, 0, ctx.view.size.x -| 1, symbols.top_right, .{
-                .style = self.boder_style.top_right,
+                .style = self.border_style.top_right,
             });
 
             _ = ctx.view.writeCell(null, ctx.view.size.y -| 1, 0, symbols.bottom_left, .{
-                .style = self.boder_style.bottom_left,
+                .style = self.border_style.bottom_left,
             });
 
             if (ctx.view.size.y > 2) {
                 ctx.view.fill(null, 1, 0, ctx.view.size.y - 2, 1, symbols.left, .{
-                    .style = self.boder_style.left,
+                    .style = self.border_style.left,
                 });
 
                 ctx.view.fill(null, 1, ctx.view.size.x -| 1, ctx.view.size.y - 2, 1, symbols.right, .{
-                    .style = self.boder_style.right,
+                    .style = self.border_style.right,
                 });
             }
 
             _ = ctx.view.writeCell(null, ctx.view.size.y -| 1, ctx.view.size.x -| 1, symbols.bottom_right, .{
-                .style = self.boder_style.bottom_right,
+                .style = self.border_style.bottom_right,
             });
         },
     }

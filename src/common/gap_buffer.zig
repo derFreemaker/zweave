@@ -90,7 +90,7 @@ pub fn GapBuffer(comptime T: type) type {
                 self.buf = new_buf;
             }
 
-            self.gap_size = new_size - old_size;
+            self.gap_size += new_size - old_size;
         }
 
         pub fn insert(self: *Self, allocator: std.mem.Allocator, item: T) std.mem.Allocator.Error!void {
@@ -107,7 +107,7 @@ pub fn GapBuffer(comptime T: type) type {
         pub fn insertSlice(self: *Self, allocator: std.mem.Allocator, slice: []const T) std.mem.Allocator.Error!void {
             if (self.gap_size < slice.len) {
                 @branchHint(.unlikely);
-                try self.grow(allocator, slice.len + self.gap_size);
+                try self.grow(allocator, self.len() + slice.len);
             }
 
             @memcpy(self.gap()[0..slice.len], slice);

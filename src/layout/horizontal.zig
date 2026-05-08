@@ -62,7 +62,7 @@ pub fn layout(handle: Element.Handle, ctx: *const Element.ComputeLayoutContext, 
                     };
                     child_data.size = ScreenVec{
                         .x = ctx.available.x,
-                        .y = child_requested_size.y,
+                        .y = @min(child_requested_size.y, available.y),
                     };
                     row_size.x = ctx.available.x;
                     row_size.y = @min(child_requested_size.y, available.y);

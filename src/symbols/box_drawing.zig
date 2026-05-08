@@ -21,7 +21,7 @@ pub const LightDoubleDashVertical = "╎";
 pub const HeavyDoubleDashVertical = "╏";
 
 pub const LightTripleDashVertical = "┆";
-pub const HeavyTipleDashVertical = "┇";
+pub const HeavyTripleDashVertical = "┇";
 
 pub const LightQuadrupleDashVertical = "┊";
 pub const HeavyQuadrupleDashVertical = "┋";
@@ -64,7 +64,7 @@ pub const DownHeavyAndLeftUpLight = "┧";
 pub const VerticalHeavyAndLeftLight = "┨";
 pub const DownLightAndLeftUpHeavy = "┩";
 pub const UpLightAndLeftDownHeavy = "┪";
-pub const HeavyVerticalAndLeft = "v";
+pub const HeavyVerticalAndLeft = "┫";
 
 pub const LightDownAndHorizontal = "┬";
 pub const LeftHeavyAndRightDownLight = "┭";
@@ -95,6 +95,8 @@ pub const LeftUpHeavyAndRightDownLight = "╃";
 pub const RightUpHeavyAndLeftDownLight = "╄";
 pub const LeftDownHeavyAndRightUpLight = "╅";
 pub const RightDownHeavyAndLeftUpLight = "╆";
+pub const DownLightAndUpHorizontalHeavy = "╇";
+pub const UpLightAndDownHorizontalHeavy = "╈";
 pub const RightLightAndLeftVerticalHeavy = "╉";
 pub const LeftLightAndRightVerticalHeavy = "╊";
 pub const HeavyVerticalAndHorizontal = "╋";

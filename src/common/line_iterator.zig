@@ -13,7 +13,7 @@ pub fn init(buffer: []const u8) LineIterator {
 }
 
 pub fn peek(self: *const LineIterator) ?Line {
-    var idx = std.mem.indexOfAnyPos(u8, self.buffer, self.index, &.{ '\r', '\n' }) orelse {
+    var idx = std.mem.findAnyPos(u8, self.buffer, self.index, &.{ '\r', '\n' }) orelse {
         if (self.index < self.buffer.len) {
             return Line{
                 .start = self.index,

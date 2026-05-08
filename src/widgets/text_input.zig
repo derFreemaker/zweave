@@ -61,39 +61,44 @@ fn computeLayout(self_ctx: Element.SelfContext, ctx: *const Element.ComputeLayou
         return size;
     }
 
-    var height: u16 = 0;
+    var height: u16 = 1;
     var max_width: u16 = 0;
     {
-        var last_line: u16 = 0;
+        var last_line_width: u16 = 0;
 
         {
             var line_iter = LineIterator.init(self.buf.firstHalf());
             while (line_iter.peek()) |line| : (line_iter.toss(line)) {
-                height += 1;
+                if (line.hasSeparator()) {
+                    height += 1;
+                }
 
                 const bytes = line.bytes(&line_iter);
                 const width: u16 = @intCast(ctx.strWidth(bytes));
-                last_line = width;
+                last_line_width = width;
                 max_width = @max(max_width, width);
 
                 if (line.isLast() and line.hasSeparator()) {
-                    last_line = 0;
+                    last_line_width = 0;
                 }
             }
         }
 
         {
             var line_iter = LineIterator.init(self.buf.secondHalf());
-            var first_line = last_line != 0;
+            var empty_line = last_line_width != 0;
             while (line_iter.peek()) |line| : (line_iter.toss(line)) {
+                if (line.hasSeparator()) {
+                    height += 1;
+                }
+
                 const bytes = line.bytes(&line_iter);
 
-                if (first_line) {
-                    first_line = false;
+                if (empty_line) {
+                    empty_line = false;
                     const width: u16 = @intCast(ctx.strWidth(bytes));
-                    max_width = @max(max_width, last_line + width);
+                    max_width = @max(max_width, last_line_width + width);
                 } else {
-                    height += 1;
                     const width: u16 = @intCast(ctx.strWidth(bytes));
                     max_width = @max(max_width, width);
                 }

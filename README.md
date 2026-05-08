@@ -9,7 +9,7 @@ A simple TUI library, with performance in mind. (no performance here yet)
 ## Contributions
 I don't currently accept contributions.
 
-## Dependecies
+## Dependencies
 
 - [zttio](https://github.com/derFreemaker/zttio)
 - [uucode](https://github.com/jacobsandlund/uucode)

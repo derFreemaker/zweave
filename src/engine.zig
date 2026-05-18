@@ -255,6 +255,9 @@ pub fn renderNextFrame(self: *Engine, io: std.Io) Renderer.RenderError!void {
     const end_render = std.Io.Timestamp.now(io, .real);
     self.prev_frame_render_time = start_render.durationTo(end_render);
 
+    var buf: [128]u8 = undefined;
+    tracy.message(.{ .text = std.fmt.bufPrint(&buf, "render_frame_time: {f}", .{self.prev_frame_render_time}) catch unreachable });
+
     {
         const start_flush = std.Io.Timestamp.now(io, .real);
 
@@ -291,9 +294,12 @@ fn writeStats(self: *const Engine) std.Io.Writer.Error!void {
     var stats_writer = stats_view.writer(&stats_buf);
     const writer = &stats_writer.writer;
 
-    try writer.print("Screen: {d}x{d} -> {d}c\n", .{
+    tracy.message(.{ .text = std.fmt.bufPrint(&stats_buf, "cap: {d}c", .{screen.buf.len}) catch unreachable });
+
+    try writer.print("Screen: {d}x{d} -> {d}c cap: {d}c\n", .{
         screen.size.x,
         screen.size.y,
+        @as(u32, screen.size.x * screen.size.y),
         screen.buf.len,
     });
 

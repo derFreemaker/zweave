@@ -94,7 +94,8 @@ pub fn clear(self: *Screen) void {
     });
     defer trace_zone.end();
 
-    @memset(self.buf, Cell{});
+    // we only clear what we need to
+    @memset(self.buf[0 .. self.size.x * self.size.y], Cell{});
 
     self.strs.clearRetainingCapacity();
     _ = self.str_arena.reset(.{ .retain_with_limit = 1024 * 1024 });
@@ -284,6 +285,7 @@ pub const Diff = struct {
         });
         defer trace_zone.end();
 
-        @memset(self.buf, Cell{});
+        // we only clear what we need to
+        @memset(self.buf[0 .. self.size.x * self.size.y], Cell{});
     }
 };

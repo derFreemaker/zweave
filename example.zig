@@ -68,7 +68,7 @@ pub fn main(init: std.process.Init) !u8 {
     try engine.tty.hideCursor();
     try engine.tty.flush();
 
-    const str2_handle = try engine.screen_store.addStr("👨‍👩‍👧‍👦");
+    const str2_handle = try engine.screen_store.addStr("F");
     defer engine.screen_store.removeStr(str2_handle);
 
     const str3_handle = try engine.screen_store.addStr("-");

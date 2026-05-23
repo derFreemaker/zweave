@@ -9,10 +9,6 @@ pub const Options = struct {
 };
 
 pub fn layout(handle: Element.Handle, ctx: *const Element.ComputeLayoutContext, opts: Options) Element.ComputeLayoutError!ScreenVec {
-    // if (!ctx.tree.get(handle).isDirty and !ctx.tree.get(handle).childIsDirty) {
-    //     return ctx.tree.getLayoutData(handle).size;
-    // }
-
     // @TODO: maybe abstract some logic into more easily understandable blocks for easier creation of other layout alogs
     // @IMPROVE
     var child_iter = ctx.tree.childs(handle);
@@ -71,7 +67,6 @@ pub fn layout(handle: Element.Handle, ctx: *const Element.ComputeLayoutContext, 
                 }
             }
 
-            // child.isDirty = false;
             child_iter.toss();
         }
 

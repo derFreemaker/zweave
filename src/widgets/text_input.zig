@@ -52,7 +52,7 @@ fn computeLayout(self_ctx: Element.SelfContext, ctx: *const Element.ComputeLayou
     const self = self_ctx.get(TextInput);
     if (self.buf.len() == 0) {
         return .{
-            .x = 0,
+            .x = 1,
             .y = 1,
         };
     }
@@ -136,7 +136,7 @@ fn draw(self_ctx: Element.SelfContext, ctx: *const Element.DrawContext) Element.
 
     const self = self_ctx.get(TextInput);
     var view_writer = ctx.view.writer(&.{});
-    const writer = &view_writer.writer;
+    const writer = &view_writer.interface;
 
     try writer.writeAll(self.buf.firstHalf());
     try writer.flush();
@@ -218,11 +218,7 @@ fn onEvent(self_ctx: Element.SelfContext, ctx: *Element.OnEventContext) Element.
 }
 
 fn onClick(self_ctx: Element.SelfContext, ctx: *Element.OnClickContext) Element.OnClickError!void {
-    _ = ctx;
-
-    const self = self_ctx.get(TextInput);
-    try self.buf.insertGraphemeSlice(self.allocator, "<clicked>");
+    try ctx.tree.setFocus(self_ctx.handle);
 
     // ctx.tree.markDirty(self_ctx.handle);
-    self.cached_size = null;
 }

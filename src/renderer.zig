@@ -1,6 +1,7 @@
 const std = @import("std");
 const tracy = @import("tracy");
 const zttio = @import("zttio");
+const ctlseqs = zttio.ctlseqs;
 
 const Unicode = @import("common/unicode.zig");
 const ScreenVec = @import("common/screen_vec.zig");
@@ -82,42 +83,40 @@ pub fn resize(self: *Renderer, new_size: ScreenVec) std.mem.Allocator.Error!void
 
 pub const RenderError = std.mem.Allocator.Error || std.Io.Writer.Error;
 
-pub fn render(self: *Renderer, screen_store: *const ScreenStore, tty: *zttio.Tty) RenderError!void {
+pub fn render(self: *Renderer, screen_store: *const ScreenStore, writer: *std.Io.Writer) RenderError!void {
     const trace_zone = tracy.Zone.begin(.{
         .name = "[Renderer]: render",
         .src = @src(),
     });
     defer trace_zone.end();
 
-    tty.startSync() catch {};
+    try writer.writeAll(ctlseqs.Terminal.sync_begin);
 
     const next = self.next;
 
     if (self.redraw) {
         self.redraw = false;
-        try renderDirect(next, screen_store, tty);
+        try renderDirect(next, screen_store, writer);
     } else {
         self.prev.diff(next, &self.diff);
-        try renderDiff(next, screen_store, &self.diff, tty);
+        try renderDiff(next, screen_store, &self.diff, writer);
     }
 
-    tty.endSync() catch {};
+    try writer.writeAll(ctlseqs.Terminal.sync_end);
 
     self.next = self.prev;
     self.prev = next;
 }
 
 // @TODO: improve rendering with widthmethod: .wcwidth
-fn renderDiff(screen: *const Screen, store: *const ScreenStore, diff: *const Screen.Diff, tty: *zttio.Tty) RenderError!void {
+fn renderDiff(screen: *const Screen, store: *const ScreenStore, diff: *const Screen.Diff, writer: *std.Io.Writer) RenderError!void {
     const trace_zone = tracy.Zone.begin(.{
         .name = "[Renderer]: render Diff",
         .src = @src(),
     });
     defer trace_zone.end();
 
-    try tty.hideCursor();
-    try tty.moveCursor(.home);
-    try tty.writer.writeAll(zttio.Styling.reset);
+    try writer.writeAll(ctlseqs.Cursor.hide ++ ctlseqs.Cursor.home ++ zttio.Styling.reset);
 
     var i: usize = 0;
     var next_wrap: usize = diff.size.x;
@@ -128,7 +127,7 @@ fn renderDiff(screen: *const Screen, store: *const ScreenStore, diff: *const Scr
     while (i < diff.len()) : (i += 1) {
         const cell = diff.buf[i];
         if (i >= next_wrap) {
-            try tty.writer.writeByte('\n');
+            try writer.writeByte('\n');
             next_wrap += diff.size.x;
             jumped_cells = 0;
         }
@@ -142,17 +141,19 @@ fn renderDiff(screen: *const Screen, store: *const ScreenStore, diff: *const Scr
                 continue;
             },
             else => {
-                try tty.moveCursor(.{ .right = jumped_cells });
-                jumped_cells = 0;
+                if (jumped_cells > 0) {
+                    try ctlseqs.Cursor.moveRight(writer, jumped_cells);
+                    jumped_cells = 0;
+                }
             },
         }
 
         if (!cell.style.eql(cur_style_handle)) {
             if (cell.style.isInvalid()) {
-                try tty.setStyling(&Style{});
+                try writer.writeAll(Style.reset);
             } else {
                 const style = store.getStyle(cell.style);
-                try tty.setStyling(style);
+                try style.print(writer);
             }
 
             cur_style_handle = cell.style;
@@ -160,12 +161,12 @@ fn renderDiff(screen: *const Screen, store: *const ScreenStore, diff: *const Scr
 
         if (!cell.segment.eql(cur_segment_handle)) {
             if (!cur_segment_handle.isInvalid()) {
-                try current_segment.end(tty.writer);
+                try current_segment.end(writer);
             }
 
             if (!cell.segment.isInvalid()) {
                 const segment = store.getSegment(cell.segment);
-                try segment.begin(tty.writer);
+                try segment.begin(writer);
                 current_segment = segment;
             }
 
@@ -178,42 +179,37 @@ fn renderDiff(screen: *const Screen, store: *const ScreenStore, diff: *const Scr
             => unreachable,
 
             .char => |c| {
-                try tty.writer.writeByte(c);
+                try writer.writeByte(c);
             },
             .short => {
-                try tty.writer.writeAll(cell.content.readShort());
+                try writer.writeAll(cell.content.readShort());
             },
             .long_local => |idx| {
                 const str = screen.getStr(idx);
-                try tty.writer.writeAll(str);
+                try writer.writeAll(str);
             },
             .long_shared => |handle| {
                 const str = store.getStr(handle);
-                try tty.writer.writeAll(str);
+                try writer.writeAll(str);
             },
         }
     }
 
     if (screen.cursor_visible) {
-        try tty.setCursorShape(screen.cursor_shape);
-        try tty.moveCursor(.{ .pos = .{
-            .row = screen.cursor_pos.x + 1,
-            .column = screen.cursor_pos.y + 1,
-        } });
-        try tty.showCursor();
+        try ctlseqs.Cursor.setCursorShape(writer, screen.cursor_shape);
+        try ctlseqs.Cursor.moveTo(writer, screen.cursor_pos.x + 1, screen.cursor_pos.y + 1);
+        try writer.writeAll(ctlseqs.Cursor.show);
     }
 }
 
-fn renderDirect(screen: *const Screen, store: *const ScreenStore, tty: *zttio.Tty) std.Io.Writer.Error!void {
+fn renderDirect(screen: *const Screen, store: *const ScreenStore, writer: *std.Io.Writer) std.Io.Writer.Error!void {
     const trace_zone = tracy.Zone.begin(.{
         .name = "[Renderer]: render Direct",
         .src = @src(),
     });
     defer trace_zone.end();
 
-    try tty.clearScreen(.entire);
-    try tty.hideCursor();
-    try tty.moveCursor(.home);
+    try writer.writeAll(ctlseqs.Cursor.hide ++ ctlseqs.Cursor.home ++ ctlseqs.Erase.scroll_back ++ ctlseqs.Erase.visible_screen);
 
     var next_wrap: usize = screen.size.x;
     var current_style_handle: ScreenStore.StyleHandle = .invalid;
@@ -223,7 +219,7 @@ fn renderDirect(screen: *const Screen, store: *const ScreenStore, tty: *zttio.Tt
     while (i < screen.len()) : (i += 1) {
         const cell = screen.buf[i];
         if (i >= next_wrap) {
-            try tty.writer.writeByte('\n');
+            try writer.writeByte('\n');
             next_wrap += screen.size.x;
         }
 
@@ -233,10 +229,10 @@ fn renderDirect(screen: *const Screen, store: *const ScreenStore, tty: *zttio.Tt
 
         if (!cell.style.eql(current_style_handle)) {
             if (cell.style.isInvalid()) {
-                try tty.setStyling(&Style{});
+                try writer.writeAll(Style.reset);
             } else {
                 const style = store.getStyle(cell.style);
-                try tty.setStyling(style);
+                try style.print(writer);
             }
 
             current_style_handle = cell.style;
@@ -244,12 +240,12 @@ fn renderDirect(screen: *const Screen, store: *const ScreenStore, tty: *zttio.Tt
 
         if (!cell.segment.eql(current_segment_handle)) {
             if (!current_segment_handle.isInvalid()) {
-                try current_segment.end(tty.writer);
+                try current_segment.end(writer);
             }
 
             if (!cell.segment.isInvalid()) {
                 const segment = store.getSegment(cell.segment);
-                try segment.begin(tty.writer);
+                try segment.begin(writer);
                 current_segment = segment;
             }
 
@@ -258,32 +254,29 @@ fn renderDirect(screen: *const Screen, store: *const ScreenStore, tty: *zttio.Tt
 
         switch (cell.content) {
             .empty => {
-                try tty.writer.writeByte(' ');
+                try writer.writeByte(' ');
             },
             .char => |c| {
-                try tty.writer.writeByte(c);
+                try writer.writeByte(c);
             },
             .short => {
-                try tty.writer.writeAll(cell.content.readShort());
+                try writer.writeAll(cell.content.readShort());
             },
             .long_local => |idx| {
                 const str = screen.getStr(idx);
-                try tty.writer.writeAll(str);
+                try writer.writeAll(str);
             },
             .long_shared => |handle| {
                 const str = store.getStr(handle);
-                try tty.writer.writeAll(str);
+                try writer.writeAll(str);
             },
             .wide_continuation => unreachable,
         }
     }
 
     if (screen.cursor_visible) {
-        try tty.setCursorShape(screen.cursor_shape);
-        try tty.moveCursor(.{ .pos = .{
-            .row = screen.cursor_pos.x + 1,
-            .column = screen.cursor_pos.y + 1,
-        } });
-        try tty.showCursor();
+        try ctlseqs.Cursor.setCursorShape(writer, screen.cursor_shape);
+        try ctlseqs.Cursor.moveTo(writer, screen.cursor_pos.x + 1, screen.cursor_pos.y + 1);
+        try writer.writeAll(ctlseqs.Cursor.show);
     }
 }

@@ -156,7 +156,7 @@ pub fn writeCell(self: *const View, store: ?*const ScreenStore, row: u16, col: u
         .segment = opts.segment,
     });
 
-    @call(if (builtin.mode != .Debug) .always_inline else .auto, correctCellsEnd, .{ self, cell_idx.inc(width) });
+    @call(if (builtin.mode != .Debug) .always_inline else .auto, correctCellsEnd, .{ self, cell_idx.add(width) });
 
     return width;
 }
@@ -191,7 +191,7 @@ pub fn fill(self: *const View, store: ?*const ScreenStore, row: u16, col: u16, h
     if (cells == 1) {
         for (0..safe_height) |h| {
             const start_idx = self.getCellIndex(@intCast(row + h), col);
-            const end_idx = start_idx.inc(safe_width);
+            const end_idx = start_idx.add(safe_width);
             @memset(screen.buf[start_idx.value()..end_idx.value()], Cell{
                 .content = content,
 
@@ -206,8 +206,8 @@ pub fn fill(self: *const View, store: ?*const ScreenStore, row: u16, col: u16, h
     const amount = std.math.divFloor(u16, safe_width, cells) catch unreachable;
     const remainder = std.math.mod(u16, safe_width, cells) catch unreachable;
 
-    std.debug.assert(cells <= 16);
-    var fill_buf: [16]Cell = undefined;
+    std.debug.assert(cells <= 32);
+    var fill_buf: [32]Cell = undefined;
     const fill_view: []Cell = fill_buf[0..cells];
     fill_buf[0] = Cell{
         .content = content,
@@ -229,13 +229,12 @@ pub fn fill(self: *const View, store: ?*const ScreenStore, row: u16, col: u16, h
 
         var current_col_idx = row_idx;
         for (0..amount) |_| {
-            const end_idx = current_col_idx.inc(cells);
+            const end_idx = current_col_idx.add(cells);
             @memcpy(screen.buf[current_col_idx.value()..end_idx.value()], fill_view);
-
-            current_col_idx = current_col_idx.inc(cells);
+            current_col_idx = end_idx;
         }
 
-        const end_idx = current_col_idx.inc(remainder);
+        const end_idx = current_col_idx.add(remainder);
         @memset(screen.buf[current_col_idx.value()..end_idx.value()], Cell{
             .content = .{ .char = ' ' },
 
@@ -243,7 +242,7 @@ pub fn fill(self: *const View, store: ?*const ScreenStore, row: u16, col: u16, h
             .segment = opts.segment,
         });
 
-        @call(if (builtin.mode != .Debug) .always_inline else .auto, correctCellsEnd, .{ self, row_idx.inc(safe_width) });
+        @call(if (builtin.mode != .Debug) .always_inline else .auto, correctCellsEnd, .{ self, row_idx.add(safe_width) });
     }
 }
 
@@ -441,6 +440,24 @@ pub fn view(self: *const View, opts: Options) View {
     };
 }
 
+pub const OptionsVec = struct {
+    pos: ScreenVec,
+    size: ?ScreenVec = null,
+
+    default_style: ScreenStore.StyleHandle = .invalid,
+};
+
+pub fn viewVec(self: *const View, opts: OptionsVec) View {
+    return View{
+        .screen = self.screen,
+
+        .pos = self.pos.add(opts.pos),
+        .size = if (opts.size) |size| size.min(self.size) else self.size,
+
+        .default_style = opts.default_style,
+    };
+}
+
 pub inline fn setCursorPos(self: *const View, pos: ScreenVec) void {
     self.screen.cursor_pos = .{
         .x = self.pos.y + pos.y,
@@ -458,14 +475,14 @@ pub inline fn setCursorVisibility(self: *const View, visible: bool) void {
 
 pub const ViewWriter = struct {
     view: View,
-    writer: std.Io.Writer,
+    interface: std.Io.Writer,
 
     pos: ScreenVec = .zero,
 
     pub fn init(view_ptr: *const View, buffer: []u8) ViewWriter {
         return ViewWriter{
             .view = view_ptr.*,
-            .writer = std.Io.Writer{
+            .interface = std.Io.Writer{
                 .buffer = buffer,
                 .vtable = &std.Io.Writer.VTable{
                     .drain = drain,
@@ -488,7 +505,7 @@ pub const ViewWriter = struct {
     }
 
     fn drain(w: *std.Io.Writer, data: []const []const u8, splat: usize) std.Io.Writer.Error!usize {
-        const self: *ViewWriter = @fieldParentPtr("writer", w);
+        const self: *ViewWriter = @fieldParentPtr("interface", w);
 
         if (w.end > 0) {
             try self.write(w.buffer[0..w.end]);

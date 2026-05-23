@@ -20,8 +20,9 @@ tree_allocator: CountingAllocator,
 render_allocator: CountingAllocator,
 arena: std.heap.ArenaAllocator,
 
-adapter: zttio.Adapters.NativeAdapter,
-tty: zttio.Tty,
+writer: *std.Io.Writer,
+caps: zttio.TerminalCapabilities,
+
 tree: Tree,
 screen_store: ScreenStore,
 renderer: Renderer,
@@ -36,9 +37,9 @@ show_debug_tree: bool,
 prev_frame_render_time: std.Io.Duration,
 prev_frame_flush_time: std.Io.Duration,
 
-pub const InitError = error{UnableToInitTty} || std.mem.Allocator.Error;
+pub const InitError = std.mem.Allocator.Error;
 
-pub fn init(allocator: std.mem.Allocator, event_allocator: std.mem.Allocator, io: std.Io, env_map: *const std.process.Environ.Map) InitError!*Engine {
+pub fn init(allocator: std.mem.Allocator, writer: *std.Io.Writer, caps: zttio.TerminalCapabilities, winsize: zttio.Winsize) InitError!*Engine {
     const ptr = try allocator.create(Engine);
     errdefer allocator.destroy(ptr);
 
@@ -47,34 +48,19 @@ pub fn init(allocator: std.mem.Allocator, event_allocator: std.mem.Allocator, io
     ptr.render_allocator = CountingAllocator.init(allocator);
     ptr.arena = std.heap.ArenaAllocator.init(allocator);
 
-    ptr.adapter = zttio.Adapters.NativeAdapter.init(allocator, io, .stdin(), .stdout()) catch return error.UnableToInitTty;
-    ptr.tty = zttio.Tty.init(
-        allocator,
-        event_allocator,
-        ptr.adapter.adapter(),
-        .{
-            .caps = zttio.TerminalCapabilities.query(io, env_map, ptr.adapter.adapter(), .fromMilliseconds(100)) catch return error.UnableToInitTty,
-        },
-    ) catch return error.UnableToInitTty;
-    errdefer ptr.tty.deinit();
-
+    ptr.writer = writer;
+    ptr.caps = caps;
     ptr.tree = try Tree.init(ptr.tree_allocator.allocator());
     errdefer ptr.tree.deinit();
 
     ptr.screen_store = try ScreenStore.init(ptr.render_allocator.allocator());
     errdefer ptr.screen_store.deinit();
 
-    const winsize = ptr.tty.getWinsize();
     const screen_size = ScreenVec{ .x = winsize.cols, .y = winsize.rows };
-    ptr.renderer = try Renderer.init(ptr.render_allocator.allocator(), screen_size, ptr.tty.caps.unicode_width_method);
+    ptr.renderer = try Renderer.init(ptr.render_allocator.allocator(), screen_size, ptr.caps.unicode_width_method);
     errdefer ptr.renderer.deinit(allocator);
 
-    ptr.root_container = Container{
-        .gap = .{
-            .x = 2,
-            .y = 1,
-        },
-    };
+    ptr.root_container = Container{};
     ptr.root = try ptr.tree.create(ptr.root_container.element());
     errdefer ptr.tree.destroy(ptr.root);
 
@@ -93,14 +79,13 @@ pub fn init(allocator: std.mem.Allocator, event_allocator: std.mem.Allocator, io
 }
 
 pub fn deinit(self: *Engine) void {
+    self.writer.flush() catch {};
+
     self.arena.deinit();
 
     self.renderer.deinit(self.render_allocator.allocator());
     self.screen_store.deinit();
     self.tree.deinit();
-
-    self.tty.deinit();
-    self.adapter.deinit(self.allocator);
 
     self.allocator.destroy(self);
 }
@@ -185,6 +170,7 @@ fn computeLayout(self: *Engine, allocator: std.mem.Allocator, screen: *Screen, r
     const ctx = Element.ComputeLayoutContext{
         .allocator = allocator,
         .tree = &self.tree,
+        .screen_store = &self.screen_store,
 
         .width_method = screen.width_method,
 
@@ -250,7 +236,7 @@ pub fn renderNextFrame(self: *Engine, io: std.Io) Renderer.RenderError!void {
         try self.writeDebugTree();
     }
 
-    try self.renderer.render(&self.screen_store, &self.tty);
+    try self.renderer.render(&self.screen_store, self.writer);
 
     const end_render = std.Io.Timestamp.now(io, .real);
     self.prev_frame_render_time = start_render.durationTo(end_render);
@@ -267,7 +253,7 @@ pub fn renderNextFrame(self: *Engine, io: std.Io) Renderer.RenderError!void {
         });
         defer flush_trace_zone.end();
 
-        try self.tty.flush();
+        try self.writer.flush();
 
         const end_flush = std.Io.Timestamp.now(io, .real);
         self.prev_frame_flush_time = start_flush.durationTo(end_flush);
@@ -292,7 +278,7 @@ fn writeStats(self: *const Engine) std.Io.Writer.Error!void {
 
     var stats_buf: [128]u8 = undefined;
     var stats_writer = stats_view.writer(&stats_buf);
-    const writer = &stats_writer.writer;
+    const writer = &stats_writer.interface;
 
     tracy.message(.{ .text = std.fmt.bufPrint(&stats_buf, "cap: {d}c", .{screen.buf.len}) catch unreachable });
 
@@ -327,7 +313,7 @@ fn writeStats(self: *const Engine) std.Io.Writer.Error!void {
 
     _ = try writer.print("prev Frame Time: {f} (engine) - {f} (flush)\n", .{ self.prev_frame_render_time, self.prev_frame_flush_time });
 
-    try writer.print("caps: {any}\n", .{self.tty.caps});
+    try writer.print("caps: {any}\n", .{self.caps});
 
     try writer.flush();
 }
@@ -350,7 +336,7 @@ fn writeDebugTree(self: *const Engine) std.Io.Writer.Error!void {
 
     var stats_buf: [128]u8 = undefined;
     var stats_writer = stats_view.writer(&stats_buf);
-    const writer = &stats_writer.writer;
+    const writer = &stats_writer.interface;
 
     try writer.print("{f} ", .{self.root});
     try writer.writeAll("<root>\n");

@@ -25,11 +25,11 @@ pub fn IndexT(comptime ParentT: type, comptime T: type) type {
             return @intFromEnum(self);
         }
 
-        pub inline fn dec(self: Self, n: T) Self {
+        pub inline fn sub(self: Self, n: T) Self {
             return Self.from(self.value() - n);
         }
 
-        pub inline fn inc(self: Self, n: T) Self {
+        pub inline fn add(self: Self, n: T) Self {
             return Self.from(self.value() + n);
         }
 

@@ -1,3 +1,5 @@
+pub const zttio = @import("zttio");
+
 pub const Engine = @import("engine.zig");
 
 pub const ScreenVec = @import("common/screen_vec.zig");

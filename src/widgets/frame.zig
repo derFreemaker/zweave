@@ -9,14 +9,11 @@ const BoxDrawing = @import("../symbols/box_drawing.zig");
 
 const Frame = @This();
 
-padding: Padding = .{ .sides = .{
-    .left = 1,
-    .right = 1,
-} },
+padding: Padding = .none,
 border: Border = .none,
 border_style: BorderStyle = .{},
 
-label_col: u16 = 0,
+label_offset: u16 = 0,
 label: ScreenStore.StrHandle = .invalid,
 
 pub fn element(self: *Frame) Element.Interface {
@@ -36,34 +33,41 @@ fn getDebugStr(self_ctx: Element.SelfContext, ctx: *const Element.GetDebugStrCon
 }
 
 fn computeLayout(self_ctx: Element.SelfContext, ctx: *const Element.ComputeLayoutContext) Element.ComputeLayoutError!ScreenVec {
-    const self_element = ctx.tree.getMut(self_ctx.handle);
-    // if (!self_element.isDirty and !self_element.childIsDirty) {
-    //     return ctx.tree.getLayoutData(self_ctx.handle).size;
-    // }
-
-    const child_handle = self_element.first_child.maybeValid() orelse {
-        return .zero;
-    };
-
     const self = self_ctx.get(Frame);
 
-    const padding = switch (self.padding) {
-        .all => |v| ScreenVec{ .x = v * 2, .y = v * 2 },
-        .sides => |sides| ScreenVec{ .x = sides.left + sides.right, .y = sides.top + sides.bottom },
-    };
-
-    const border = switch (self.border) {
+    var border = switch (self.border) {
         .none => ScreenVec.zero,
         .single_cell => ScreenVec{ .x = 2, .y = 2 },
+    };
+    if (self.label.maybeValid()) |_| {
+        border = border.max(ScreenVec{ .x = 0, .y = 1 });
+    }
+
+    const self_element = ctx.tree.getMut(self_ctx.handle);
+    const child_handle = self_element.first_child.maybeValid() orelse {
+        if (self.label.maybeValid()) |label_handle| {
+            border = ScreenVec{
+                .x = @intCast(border.x + self.label_offset + ctx.strWidth(ctx.screen_store.getStr(label_handle))),
+                .y = @max(border.y, 1),
+            };
+        }
+        return border;
+    };
+
+    const padding = switch (self.padding) {
+        .none => ScreenVec.zero,
+        .all => |v| ScreenVec{ .x = v * 2, .y = v * 2 },
+        .sides => |sides| ScreenVec{ .x = sides.left + sides.right, .y = sides.top + sides.bottom },
     };
 
     const child = ctx.tree.getMut(child_handle);
 
     const child_available = ctx.available.sub(padding).sub(border);
     const child_ctx = ctx.child(child_available);
-    const child_size = try child.interface.computeLayout(&child_ctx);
+    const child_size = (try child.interface.computeLayout(&child_ctx)).min(child_available);
 
     const padding_top_left = switch (self.padding) {
+        .none => ScreenVec.zero,
         .all => |v| ScreenVec{ .x = v, .y = v },
         .sides => |sides| ScreenVec{
             .x = sides.left,
@@ -71,43 +75,57 @@ fn computeLayout(self_ctx: Element.SelfContext, ctx: *const Element.ComputeLayou
         },
     };
 
-    const border_top_left = switch (self.border) {
+    var border_top_left = switch (self.border) {
         .none => ScreenVec.zero,
         .single_cell => ScreenVec{ .x = 1, .y = 1 },
     };
+    if (self.label.maybeValid()) |_| {
+        border_top_left = border_top_left.max(ScreenVec{ .x = 0, .y = 1 });
+    }
 
     const child_data = ctx.tree.getLayoutDataMut(child_handle);
     child_data.pos = padding_top_left.add(border_top_left);
-    child_data.size = child_size.min(child_available);
+    child_data.size = child_size;
 
-    // child.isDirty = false;
-    // self_element.childIsDirty = false;
+    var requested_size = child_size.add(padding).add(border);
+    if (self.label.maybeValid()) |label_handle| {
+        const width_border: u16 = switch (self.border) {
+            .none => 0,
+            .single_cell => 2,
+        };
 
-    return child_size.add(padding).add(border);
+        const width_label = ctx.strWidth(ctx.screen_store.getStr(label_handle));
+
+        requested_size = requested_size.max(ScreenVec{ .x = @intCast(self.label_offset + width_label + width_border), .y = 1 });
+    }
+
+    return requested_size;
 }
 
 fn draw(self_ctx: Element.SelfContext, ctx: *const Element.DrawContext) Element.DrawError!void {
     const self = self_ctx.get(Frame);
 
     draw_frame: switch (self.border) {
-        .none => {},
-        .single_cell => |symbols| {
-            if (ctx.view.size.x < 2) {
-                break :draw_frame;
+        .none => {
+            if (self.label.maybeValid()) |label_handle| {
+                _ = try ctx.view.write(0, self.label_offset, ctx.screen_store.getStr(label_handle), .{});
             }
-
+        },
+        .single_cell => |symbols| {
             _ = ctx.view.writeCell(null, 0, 0, symbols.top_left, .{
                 .style = self.border_style.top_left,
             });
 
-            if (ctx.view.size.x > 2) {
+            if (ctx.view.size.x < 2) {
+                break :draw_frame;
+            } else if (ctx.view.size.x > 2) {
                 ctx.view.fill(null, 0, 1, 1, ctx.view.size.x - 2, symbols.top, .{
                     .style = self.border_style.top,
                 });
 
                 if (self.label.maybeValid()) |label_handle| {
-                    _ = try ctx.view.write(0, 1 + self.label_col, ctx.screen_store.getStr(label_handle), .{
-                        .max_width = ctx.view.size.x -| 2 -| self.label_col,
+                    _ = try ctx.view.write(0, 1 + self.label_offset, ctx.screen_store.getStr(label_handle), .{
+                        .max_width = ctx.view.size.x -| 2 -| self.label_offset,
                     });
                 }
 
@@ -146,12 +164,9 @@ fn draw(self_ctx: Element.SelfContext, ctx: *const Element.DrawContext) Element.
     };
 
     const child_layout_data = ctx.tree.getLayoutData(child_handle);
-    const child_view = ctx.view.view(.{
-        .col = child_layout_data.pos.x,
-        .row = child_layout_data.pos.y,
-
-        .width = child_layout_data.size.x,
-        .height = child_layout_data.size.y,
+    const child_view = ctx.view.viewVec(.{
+        .pos = child_layout_data.pos,
+        .size = child_layout_data.size,
     });
 
     const child_ctx = ctx.child(child_view);
@@ -160,6 +175,7 @@ fn draw(self_ctx: Element.SelfContext, ctx: *const Element.DrawContext) Element.
 }
 
 pub const Padding = union(enum) {
+    none,
     all: u16,
     sides: Sides,
 

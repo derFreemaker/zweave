@@ -2,8 +2,8 @@ const std = @import("std");
 const builtin = @import("builtin");
 const tracy = @import("tracy");
 
-const zttio = @import("zttio");
 const zweave = @import("zweave");
+const zttio = zweave.zttio;
 
 const Block = struct {
     width: f32,
@@ -55,18 +55,29 @@ pub fn main(init: std.process.Init) !u8 {
     };
     const event_allocator = trace_event_allocator.allocator();
 
-    var engine = try zweave.Engine.init(allocator, event_allocator, init.io, init.environ_map);
-    global_tty = &engine.tty;
+    var adapter = try zttio.Adapters.NativeAdapter.init(allocator, init.io, .stdin(), .stdout());
+    defer adapter.deinit(allocator);
+    var tty = try zttio.Tty.init(
+        allocator,
+        event_allocator,
+        adapter.adapter(),
+        .{
+            .caps = try zttio.TerminalCapabilities.query(init.io, init.environ_map, adapter.adapter(), .fromMilliseconds(100)),
+        },
+    );
+    global_tty = &tty;
     defer {
-        engine.tty.flush() catch {};
+        tty.deinit();
         global_tty = null;
-        engine.deinit();
     }
 
-    try engine.tty.enableAndResetAlternativeScreen();
-    defer engine.tty.disableAlternativeScreen() catch {};
-    try engine.tty.hideCursor();
-    try engine.tty.flush();
+    var engine = try zweave.Engine.init(allocator, tty.writer, tty.caps, tty.getWinsize());
+    defer engine.deinit();
+
+    try tty.enableAndResetAlternativeScreen();
+    defer tty.disableAlternativeScreen() catch {};
+    try tty.hideCursor();
+    try tty.flush();
 
     const str2_handle = try engine.screen_store.addStr("F");
     defer engine.screen_store.removeStr(str2_handle);
@@ -94,25 +105,25 @@ pub fn main(init: std.process.Init) !u8 {
     const block_handle = try engine.tree.create(block.element());
     defer engine.tree.destroy(block_handle);
 
-    const frame_label_handle = try engine.screen_store.addStr(zweave.Symbols.BoxDrawing.DoubleVerticalAndLeft ++ " test input " ++ zweave.Symbols.BoxDrawing.DoubleVerticalAndRight);
+    const frame_label_handle = try engine.screen_store.addStr("< test input >");
     defer engine.screen_store.removeStr(frame_label_handle);
 
     var frame = zweave.Widgets.Frame{
-        .border = .double,
+        .border = .none,
 
         .label = frame_label_handle,
-        .label_col = 1,
+        .label_offset = 1,
     };
     const frame_handle = try engine.tree.create(frame.element());
     defer engine.tree.destroy(frame_handle);
 
     var screen = try zweave.Widgets.Screen.init(allocator, .{
         .size = .{ .x = 50, .y = 30 },
-        .width_method = engine.tty.caps.unicode_width_method,
+        .width_method = tty.caps.unicode_width_method,
     });
     defer screen.deinit(allocator);
     var screen_view_writer = screen.view.writer(&.{});
-    const screen_writer = &screen_view_writer.writer;
+    const screen_writer = &screen_view_writer.interface;
     const screen_handle = try engine.tree.create(screen.element());
     defer engine.tree.destroy(screen_handle);
 
@@ -123,16 +134,23 @@ pub fn main(init: std.process.Init) !u8 {
 
     engine.tree.addChildren(frame_handle, &.{input_handle});
 
-    engine.tree.addChildren(engine.root, &.{ screen_handle, frame_handle, block_handle });
+    const frame_handle_2 = try engine.tree.create(frame.element());
+    defer engine.tree.destroy(frame_handle_2);
+
+    const input_handle_2 = try engine.tree.create(input.element());
+    defer engine.tree.destroy(input_handle_2);
+
+    engine.tree.addChildren(frame_handle_2, &.{input_handle_2});
+
+    engine.tree.addChildren(engine.root, &.{ screen_handle, frame_handle, frame_handle_2 });
 
     while (true) {
-        var event = try engine.tty.nextEvent();
+        var event = try tty.nextEvent();
         defer event.deinit(event_allocator);
 
         const trace_zone = tracy.Zone.begin(.{
             .name = "main_loop",
             .src = @src(),
-            .callstack_depth = 62,
         });
         defer trace_zone.end();
 
@@ -153,7 +171,7 @@ pub fn main(init: std.process.Init) !u8 {
                     } else {
                         engine.tree.removeFocus();
                     }
-                } else if (key_press.matchExact(.enter, .{ .shift = true })) {
+                } else if (key_press.matchExact(.enter, .{})) {
                     if (engine.tree.isFocused(input_handle)) {
                         try screen_writer.writeAll(input.buf.firstHalf());
                         try screen_writer.writeAll(input.buf.secondHalf());

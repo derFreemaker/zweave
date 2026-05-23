@@ -207,7 +207,7 @@ pub const ScreenDiffIterator = struct {
 
     pub fn next(self: *ScreenDiffIterator) ?CellDiff {
         while (self.idx.value() < self.end.value()) {
-            defer self.idx = self.idx.inc(1);
+            defer self.idx = self.idx.add(1);
 
             const first = &self.first.buf[self.idx.value()];
             const second = &self.second.buf[self.idx.value()];

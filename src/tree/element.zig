@@ -163,6 +163,7 @@ pub const ComputeLayoutContext = struct {
 
     allocator: std.mem.Allocator,
     tree: *Tree,
+    screen_store: *const ScreenStore,
 
     width_method: Unicode.WidthMethod,
 

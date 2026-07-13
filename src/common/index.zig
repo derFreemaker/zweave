@@ -12,12 +12,14 @@ pub fn IndexT(comptime ParentT: type, comptime T: type) type {
 
         const Self = @This();
 
-        invalid = std.math.maxInt(T),
+        invalid = 0,
         _,
 
-        /// assert the value is not equal to invalid
+        pub inline fn isInvalid(self: Self) bool {
+            return self.value() == comptime Self.invalid.value();
+        }
+
         pub inline fn from(v: T) Self {
-            std.debug.assert(v != comptime Self.invalid.value());
             return @enumFromInt(v);
         }
 
@@ -25,12 +27,17 @@ pub fn IndexT(comptime ParentT: type, comptime T: type) type {
             return @intFromEnum(self);
         }
 
+        /// Does a saturating subtraction.
         pub inline fn sub(self: Self, n: T) Self {
-            return Self.from(self.value() - n);
+            return Self.from(self.value() -| n);
         }
 
         pub inline fn add(self: Self, n: T) Self {
             return Self.from(self.value() + n);
+        }
+
+        pub inline fn inc(self: *Self, n: T) void {
+            self.* = .from(self.value() + n);
         }
 
         pub fn format(self: Self, writer: *std.Io.Writer) std.Io.Writer.Error!void {

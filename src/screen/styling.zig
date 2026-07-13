@@ -1,3 +1,4 @@
-const zttio = @import("zttio");
+const std = @import("std");
 
-pub const Style = zttio.Styling;
+const zttio = @import("zttio");
+pub const Styling = zttio.Styling;

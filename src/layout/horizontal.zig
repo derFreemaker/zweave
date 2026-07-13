@@ -1,8 +1,8 @@
 const std = @import("std");
 
-const ScreenVec = @import("../common/screen_vec.zig");
-const Tree = @import("../tree/tree.zig");
+const ScreenVec = @import("../screen/screen_vec.zig");
 const Element = @import("../tree/element.zig");
+const Tree = @import("../tree/tree.zig");
 
 pub const Options = struct {
     gap: ScreenVec = .zero,
@@ -32,31 +32,31 @@ pub fn layout(handle: Element.Handle, ctx: *const Element.ComputeLayoutContext, 
             const child_layout_ctx = ctx.child(child_available);
             const child_requested_size = try child.interface.computeLayout(&child_layout_ctx);
 
-            const child_data = ctx.tree.getLayoutDataMut(child_handle);
+            const child_layout_data = ctx.tree.getLayoutData(child_handle);
 
             const total_child_width = if (row_size.x == 0) child_requested_size.x else child_requested_size.x + opts.gap.x;
             if (total_child_width <= available.x) {
-                child_data.pos = ScreenVec{
+                child_layout_data.pos = ScreenVec{
                     .x = row_size.x + if (row_size.x == 0) 0 else opts.gap.x,
                     .y = row_pos,
                 };
-                child_data.size = ScreenVec{
+                child_layout_data.size = ScreenVec{
                     .x = child_requested_size.x,
                     .y = @min(child_requested_size.y, available.y),
                 };
 
-                available.x -|= total_child_width;
+                available.x -= total_child_width;
                 row_size.x += total_child_width;
                 row_size.y = @max(row_size.y, @min(child_requested_size.y, available.y));
             } else {
                 available.x = 0;
 
                 if (child_requested_size.x > ctx.available.x and row_size.x == 0) {
-                    child_data.pos = ScreenVec{
+                    child_layout_data.pos = ScreenVec{
                         .x = row_size.x,
                         .y = row_pos,
                     };
-                    child_data.size = ScreenVec{
+                    child_layout_data.size = ScreenVec{
                         .x = ctx.available.x,
                         .y = @min(child_requested_size.y, available.y),
                     };
@@ -90,7 +90,7 @@ pub fn layout(handle: Element.Handle, ctx: *const Element.ComputeLayoutContext, 
     std.debug.assert(total_size.inside(ctx.available));
 
     while (child_iter.peek()) |child_handle| : (child_iter.toss()) {
-        const child_data = ctx.tree.getLayoutDataMut(child_handle);
+        const child_data = ctx.tree.getLayoutData(child_handle);
 
         child_data.pos = total_size;
         child_data.size = .zero;

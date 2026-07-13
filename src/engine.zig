@@ -1,17 +1,20 @@
 const std = @import("std");
-const tracy = @import("tracy");
-const zttio = @import("zttio");
+pub const InitError = std.mem.Allocator.Error;
+pub const LayoutError = std.mem.Allocator.Error;
 
-const ScreenVec = @import("common/screen_vec.zig");
+const tracy = @import("tracy");
+
 const CountingAllocator = @import("common/counting_allocator.zig");
-const Container = @import("widgets/container.zig");
+const Event = @import("event.zig").Event;
+const Renderer = @import("renderer.zig");
 const Screen = @import("screen/screen.zig");
 const ScreenStore = @import("screen/screen_store.zig");
-const Style = @import("screen/styling.zig").Style;
-const Tree = @import("tree/tree.zig");
+const ScreenVec = @import("screen/screen_vec.zig");
+const Styling = @import("screen/styling.zig").Styling;
 const Element = @import("tree/element.zig");
-const Renderer = @import("renderer.zig");
-const Event = @import("event.zig").Event;
+const Tree = @import("tree/tree.zig");
+const Unicode = @import("unicode.zig");
+const Container = @import("widgets/container.zig");
 
 const Engine = @This();
 
@@ -21,7 +24,7 @@ render_allocator: CountingAllocator,
 arena: std.heap.ArenaAllocator,
 
 writer: *std.Io.Writer,
-caps: zttio.TerminalCapabilities,
+width_method: Unicode.WidthMethod,
 
 tree: Tree,
 screen_store: ScreenStore,
@@ -30,16 +33,16 @@ renderer: Renderer,
 root_container: Container,
 root: Element.Handle,
 
-stats_style: ScreenStore.StyleHandle,
+last_mouse_pos: ?ScreenVec,
+
 show_stats: bool,
 show_debug_tree: bool,
+debug_styling: ScreenStore.StylingHandle,
 
 prev_frame_render_time: std.Io.Duration,
 prev_frame_flush_time: std.Io.Duration,
 
-pub const InitError = std.mem.Allocator.Error;
-
-pub fn init(allocator: std.mem.Allocator, writer: *std.Io.Writer, caps: zttio.TerminalCapabilities, winsize: zttio.Winsize) InitError!*Engine {
+pub fn init(allocator: std.mem.Allocator, writer: *std.Io.Writer, width_method: Unicode.WidthMethod, screen_size: ScreenVec) InitError!*Engine {
     const ptr = try allocator.create(Engine);
     errdefer allocator.destroy(ptr);
 
@@ -49,28 +52,29 @@ pub fn init(allocator: std.mem.Allocator, writer: *std.Io.Writer, caps: zttio.Te
     ptr.arena = std.heap.ArenaAllocator.init(allocator);
 
     ptr.writer = writer;
-    ptr.caps = caps;
+    ptr.width_method = width_method;
     ptr.tree = try Tree.init(ptr.tree_allocator.allocator());
     errdefer ptr.tree.deinit();
 
     ptr.screen_store = try ScreenStore.init(ptr.render_allocator.allocator());
     errdefer ptr.screen_store.deinit();
 
-    const screen_size = ScreenVec{ .x = winsize.cols, .y = winsize.rows };
-    ptr.renderer = try Renderer.init(ptr.render_allocator.allocator(), screen_size, ptr.caps.unicode_width_method);
+    ptr.renderer = try Renderer.init(ptr.render_allocator.allocator(), &ptr.screen_store, screen_size, ptr.width_method);
     errdefer ptr.renderer.deinit(allocator);
 
     ptr.root_container = Container{};
     ptr.root = try ptr.tree.create(ptr.root_container.element());
     errdefer ptr.tree.destroy(ptr.root);
 
-    ptr.stats_style = try ptr.screen_store.addStyle(Style{
-        .background = .{ .c8 = .black },
-        .foreground = .{ .c8 = .bright_green },
-    });
-    errdefer ptr.screen_store.removeStyle(ptr.stats_style);
+    ptr.last_mouse_pos = null;
+
     ptr.show_stats = false;
     ptr.show_debug_tree = false;
+    ptr.debug_styling = try ptr.screen_store.addStyling(Styling{
+        .bg = .{ .c8 = .black },
+        .fg = .{ .c8 = .bright_green },
+    });
+    errdefer ptr.screen_store.removeStyling(ptr.debug_styling);
 
     ptr.prev_frame_render_time = .zero;
     ptr.prev_frame_flush_time = .zero;
@@ -115,50 +119,27 @@ pub fn showDebugTree(self: *Engine, value: ?bool) void {
 pub fn dispatchEvent(self: *Engine, event: *const Event) std.mem.Allocator.Error!void {
     const root = self.tree.get(self.root);
 
-    var ctx = Element.OnEventContext{
-        .tree = &self.tree,
-
-        .event = event,
-    };
-    try root.interface.onEvent(&ctx);
-
-    if (ctx.consumed) {
-        return;
-    }
-
     switch (event.*) {
         .mouse => |mouse| {
-            if (mouse.button != .left or mouse.type != .press) {
-                return;
-            }
-
-            var click_ctx = Element.OnClickContext{
-                .tree = &self.tree,
-                .pos = .{
-                    .x = @intCast(mouse.col),
-                    .y = @intCast(mouse.row),
-                },
-            };
-            try root.interface.onClick(&click_ctx);
+            self.last_mouse_pos = ScreenVec{ .x = mouse.col, .y = mouse.row };
         },
         else => {},
     }
-}
 
-pub fn dispatchEventToFocusedElement(self: *Engine, event: *const Event) std.mem.Allocator.Error!void {
-    if (self.tree.isFocused(.invalid)) return;
-    const handle = self.tree.focused_element;
-    const element = self.tree.get(handle);
-
+    var consumed = false;
     var ctx = Element.OnEventContext{
         .tree = &self.tree,
 
         .event = event,
-    };
-    try element.interface.onEvent(&ctx);
-}
+        .consumed = &consumed,
 
-pub const LayoutError = std.mem.Allocator.Error;
+        .mouse_rel_pos = switch (event.*) {
+            .mouse => |mouse| ScreenVec{ .x = mouse.col, .y = mouse.row },
+            else => null,
+        },
+    };
+    try root.interface.onEvent(&ctx);
+}
 
 fn computeLayout(self: *Engine, allocator: std.mem.Allocator, screen: *Screen, root: *const Element) LayoutError!ScreenVec {
     const layout_trace_zone = tracy.Zone.begin(.{
@@ -184,65 +165,66 @@ fn computeLayout(self: *Engine, allocator: std.mem.Allocator, screen: *Screen, r
 }
 
 pub fn renderNextFrame(self: *Engine, io: std.Io) Renderer.RenderError!void {
-    const trace_zone = tracy.Zone.begin(.{
-        .name = "[Engine]: renderNextFrame",
-        .src = @src(),
-    });
-    defer trace_zone.end();
-
-    const start_render = std.Io.Timestamp.now(io, .real);
-
-    _ = self.arena.reset(.{ .retain_with_limit = 8 * 1024 * 1024 });
-    var trace_allocator = tracy.Allocator{
-        .pool_name = "[Engine]: FrameArena",
-        .parent = self.arena.allocator(),
-    };
-    const allocator = trace_allocator.allocator();
-
-    self.renderer.prepareNextFrameScreen();
-    var screen = self.renderer.getScreen();
-
-    const root = self.tree.get(self.root);
-    const needed_space = try self.computeLayout(allocator, screen, root);
-
     {
-        const draw_trace_zone = tracy.Zone.begin(.{
-            .name = "[Engine]: draw",
+        const trace_zone = tracy.Zone.begin(.{
+            .name = "[Engine]: renderNextFrame",
             .src = @src(),
         });
-        defer draw_trace_zone.end();
+        defer trace_zone.end();
 
-        const root_view = screen.view(.{
-            .col = 0,
-            .row = 0,
-            .width = needed_space.x,
-            .height = needed_space.y,
-        });
+        const start_render = std.Io.Timestamp.now(io, .real);
 
-        const ctx = Element.DrawContext{
-            .tree = &self.tree,
-
-            .view = root_view,
-            .screen_store = &self.screen_store,
+        _ = self.arena.reset(.{ .retain_with_limit = 8 * 1024 * 1024 });
+        var trace_allocator = tracy.Allocator{
+            .pool_name = "[Engine]: FrameArena",
+            .parent = self.arena.allocator(),
         };
-        try root.interface.draw(&ctx);
+        const allocator = trace_allocator.allocator();
+
+        self.renderer.prepareNextFrameScreen();
+        var screen = self.renderer.getScreen();
+
+        const root = self.tree.get(self.root);
+        const needed_space = try self.computeLayout(allocator, screen, root);
+
+        {
+            const draw_trace_zone = tracy.Zone.begin(.{
+                .name = "[Engine]: draw",
+                .src = @src(),
+            });
+            defer draw_trace_zone.end();
+
+            const root_view = screen.view(.{
+                .size = needed_space,
+            });
+
+            const ctx = Element.DrawContext{
+                .tree = &self.tree,
+
+                .view = root_view,
+                .screen_store = &self.screen_store,
+
+                .mouse_rel_pos = self.last_mouse_pos,
+            };
+            try root.interface.draw(&ctx);
+        }
+
+        if (self.show_stats) {
+            try self.writeStats();
+        }
+
+        if (self.show_debug_tree) {
+            try self.writeDebugTree();
+        }
+
+        try self.renderer.render(&self.screen_store, self.writer);
+
+        const end_render = std.Io.Timestamp.now(io, .real);
+        self.prev_frame_render_time = start_render.durationTo(end_render);
+
+        var buf: [128]u8 = undefined;
+        tracy.message(.{ .text = std.fmt.bufPrint(&buf, "render_frame_time: {f}", .{self.prev_frame_render_time}) catch unreachable });
     }
-
-    if (self.show_stats) {
-        try self.writeStats();
-    }
-
-    if (self.show_debug_tree) {
-        try self.writeDebugTree();
-    }
-
-    try self.renderer.render(&self.screen_store, self.writer);
-
-    const end_render = std.Io.Timestamp.now(io, .real);
-    self.prev_frame_render_time = start_render.durationTo(end_render);
-
-    var buf: [128]u8 = undefined;
-    tracy.message(.{ .text = std.fmt.bufPrint(&buf, "render_frame_time: {f}", .{self.prev_frame_render_time}) catch unreachable });
 
     {
         const start_flush = std.Io.Timestamp.now(io, .real);
@@ -269,18 +251,15 @@ fn writeStats(self: *const Engine) std.Io.Writer.Error!void {
 
     const screen = self.renderer.getScreen();
 
-    const stats_view = screen.view(.{
-        .col = 0,
-        .row = 0,
+    const stats_view = screen.view(.{});
 
-        .default_style = self.stats_style,
+    var stats_buf: [256]u8 = undefined;
+    var stats_writer = stats_view.writer(&stats_buf, .{
+        .styling = self.debug_styling,
     });
-
-    var stats_buf: [128]u8 = undefined;
-    var stats_writer = stats_view.writer(&stats_buf);
     const writer = &stats_writer.interface;
 
-    tracy.message(.{ .text = std.fmt.bufPrint(&stats_buf, "cap: {d}c", .{screen.buf.len}) catch unreachable });
+    tracy.message(.{ .text = std.fmt.bufPrint(&stats_buf, "Screen: {d}x{d} cells: {d}c", .{ screen.size.x, screen.size.y, screen.len() }) catch unreachable });
 
     try writer.print("Screen: {d}x{d} -> {d}c cap: {d}c\n", .{
         screen.size.x,
@@ -313,8 +292,6 @@ fn writeStats(self: *const Engine) std.Io.Writer.Error!void {
 
     _ = try writer.print("prev Frame Time: {f} (engine) - {f} (flush)\n", .{ self.prev_frame_render_time, self.prev_frame_flush_time });
 
-    try writer.print("caps: {any}\n", .{self.caps});
-
     try writer.flush();
 }
 
@@ -327,15 +304,12 @@ fn writeDebugTree(self: *const Engine) std.Io.Writer.Error!void {
 
     const screen = self.renderer.getScreen();
 
-    const stats_view = screen.view(.{
-        .col = 0,
-        .row = 0,
+    const stats_view = screen.view(.{});
 
-        .default_style = self.stats_style,
+    var stats_buf: [256]u8 = undefined;
+    var stats_writer = stats_view.writer(&stats_buf, .{
+        .styling = self.debug_styling,
     });
-
-    var stats_buf: [128]u8 = undefined;
-    var stats_writer = stats_view.writer(&stats_buf);
     const writer = &stats_writer.interface;
 
     try writer.print("{f} ", .{self.root});

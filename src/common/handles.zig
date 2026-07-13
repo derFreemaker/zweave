@@ -5,10 +5,11 @@ const Indexes = @import("index.zig");
 
 const buildingSafe = builtin.mode == .Debug or builtin.mode == .ReleaseSafe;
 
-/// The maximum value of the given type is used for representing an invalid handle.
+/// `0` is used for representing an invalid handle.
+/// It's recomended to allocate a stub for the invalid handle.
 pub fn HandleStoreT(comptime ParentT: type, comptime T: type) type {
     if (@typeInfo(T) != .int) @compileError("expected T of type 'int' found: " ++ @typeName(T));
-    if (@typeInfo(T).int.bits <= 1) @compileError("expected T to have more than 1 bit: " ++ @typeName(T));
+    if (@typeInfo(T).int.signedness != .unsigned) @compileError("expected T to be 'unsigned' found: " ++ @typeName(T));
 
     return struct {
         pub const Handle = HandleT(ParentT, T);
@@ -19,9 +20,25 @@ pub fn HandleStoreT(comptime ParentT: type, comptime T: type) type {
         handles: if (buildingSafe) std.ArrayList(T) else T,
 
         pub fn init(allocator: std.mem.Allocator, capacity: T) std.mem.Allocator.Error!Self {
+            var free_handles = try std.ArrayList(T).initCapacity(allocator, capacity);
+            errdefer free_handles.deinit(allocator);
+
+            // we start at '1' since 0 would be the invalid handle
+            var handles = if (comptime buildingSafe) try std.ArrayList(T).initCapacity(allocator, free_handles.capacity) else @as(T, 1);
+            errdefer if (comptime buildingSafe) handles.deinit(allocator);
+
+            // stub for invalid handle with index: 0
+            comptime std.debug.assert(Handle.invalid.index.value() == 0);
+            if (comptime buildingSafe) {
+                _ = try handles.append(allocator, 0);
+
+                // sync capacity if it was initalized with zero capacity
+                _ = try free_handles.ensureTotalCapacityPrecise(allocator, handles.capacity);
+            }
+
             return Self{
-                .free_handles = try .initCapacity(allocator, capacity),
-                .handles = if (comptime buildingSafe) try .initCapacity(allocator, capacity) else 0,
+                .free_handles = free_handles,
+                .handles = handles,
             };
         }
 
@@ -38,12 +55,14 @@ pub fn HandleStoreT(comptime ParentT: type, comptime T: type) type {
 
             if (comptime buildingSafe) {
                 self.handles.clearRetainingCapacity();
-            } else {
-                self.handles = 0;
             }
         }
 
         pub fn isValid(self: *const Self, handle: Handle) bool {
+            if (handle.isInvalid()) {
+                return false;
+            }
+
             if (comptime buildingSafe) {
                 return self.handles.items.len > handle.index.value() and
                     self.handles.items[handle.index.value()] == handle.generation;
@@ -60,11 +79,6 @@ pub fn HandleStoreT(comptime ParentT: type, comptime T: type) type {
                 };
             }
 
-            std.debug.assert(if (comptime buildingSafe)
-                self.handles.items.len < Handle.invalid.index.value()
-            else
-                self.handles < Handle.invalid.index.value());
-
             if (comptime buildingSafe) {
                 const gen = try self.handles.addOne(allocator);
                 try self.free_handles.ensureTotalCapacityPrecise(allocator, self.handles.capacity);
@@ -75,22 +89,24 @@ pub fn HandleStoreT(comptime ParentT: type, comptime T: type) type {
                     .generation = 0,
                 };
             } else {
-                const handle = Handle{
-                    .index = .from(self.handles),
+                const idx: Handle.UnderlyingT = self.handles;
+                try self.free_handles.ensureTotalCapacityPrecise(allocator, idx);
+                self.handles +|= 1;
+
+                return Handle{
+                    .index = .from(idx),
                     .generation = void{},
                 };
-                self.handles +|= 1;
-                try self.free_handles.ensureTotalCapacity(allocator, self.handles);
-
-                return handle;
             }
         }
 
         pub fn destroy(self: *Self, handle: Handle) void {
-            if (!self.isValid(handle)) return;
+            if (!self.isValid(handle)) {
+                return;
+            }
 
             if (comptime buildingSafe) {
-                self.handles.items[handle.index.value()] +|= 1;
+                self.handles.items[handle.index.value()] += 1;
             }
 
             self.free_handles.appendAssumeCapacity(handle.index.value());
@@ -98,30 +114,30 @@ pub fn HandleStoreT(comptime ParentT: type, comptime T: type) type {
     };
 }
 
-/// The maximum value of the given type is used for representing an invalid handle.
+/// '0' is used for representing an invalid handle.
 pub fn HandleT(comptime ParentT: type, comptime T: type) type {
-    // we only need the parent type for better identification
-    _ = ParentT;
-
     if (@typeInfo(T) != .int) @compileError("expected T of type 'int' found: " ++ @typeName(T));
-    if (@typeInfo(T).int.bits <= 1) @compileError("expected T to have more than 1 bit: " ++ @typeName(T));
+    if (@typeInfo(T).int.signedness != .unsigned) @compileError("expected T to be 'unsigned' found: " ++ @typeName(T));
 
     return packed struct {
         pub const UnderlyingT = T;
 
         const Self = @This();
 
-        pub const invalid = Self{ .index = .invalid, .generation = if (buildingSafe) 0 else void{} };
+        pub const invalid = Self{
+            .index = .invalid,
+            .generation = if (buildingSafe) 0 else void{},
+        };
 
         pub inline fn isInvalid(self: Self) bool {
-            return self.index == .invalid;
+            return self.index.isInvalid();
         }
 
         pub inline fn maybeValid(self: Self) ?Self {
             return if (self.isInvalid()) null else self;
         }
 
-        index: Indexes.IndexT(Self, T),
+        index: Indexes.IndexT(ParentT, T),
         generation: if (buildingSafe) T else void,
 
         pub inline fn eql(self: Self, other: Self) bool {

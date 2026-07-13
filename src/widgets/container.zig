@@ -1,7 +1,7 @@
 const std = @import("std");
 const tracy = @import("tracy");
 
-const ScreenVec = @import("../common/screen_vec.zig");
+const ScreenVec = @import("../screen/screen_vec.zig");
 const Element = @import("../tree/element.zig");
 
 const Container = @This();
@@ -48,12 +48,18 @@ fn draw(self_ctx: Element.SelfContext, ctx: *const Element.DrawContext) Element.
     while (child_iter.peek()) |child_handle| : (child_iter.toss()) {
         const child_layout_data = ctx.tree.getLayoutData(child_handle);
         const child_view = view.view(.{
-            .col = child_layout_data.pos.x,
-            .row = child_layout_data.pos.y,
-            .width = child_layout_data.size.x,
-            .height = child_layout_data.size.y,
+            .pos = child_layout_data.pos,
+            .size = child_layout_data.size,
         });
-        const child_ctx = ctx.child(child_view);
+        const rel_pos: ?ScreenVec = blk: {
+            var rel_pos = ctx.mouse_rel_pos orelse break :blk null;
+            const child_rel_pos = rel_pos.subOverflow(child_layout_data.pos) catch break :blk null;
+            if (child_rel_pos.x >= child_layout_data.size.x or child_rel_pos.y >= child_layout_data.size.y) {
+                break :blk null;
+            }
+            break :blk child_rel_pos;
+        };
+        const child_ctx = ctx.child(child_view, rel_pos);
 
         const child = ctx.tree.get(child_handle);
         try child.interface.draw(&child_ctx);

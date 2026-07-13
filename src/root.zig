@@ -1,19 +1,16 @@
 pub const zttio = @import("zttio");
 
 pub const Engine = @import("engine.zig");
-
-pub const ScreenVec = @import("common/screen_vec.zig");
 pub const Event = @import("event.zig").Event;
-
-pub const Tree = @import("tree/tree.zig");
-pub const Element = @import("tree/element.zig");
-
 pub const Screen = @import("screen/screen.zig");
-pub const Style = @import("screen/styling.zig").Style;
 pub const ScreenStore = @import("screen/screen_store.zig");
 pub const StrHandle = ScreenStore.StrHandle;
-pub const StyleHandle = ScreenStore.StyleHandle;
+pub const StylingHandle = ScreenStore.StylingHandle;
 pub const SegmentHandle = ScreenStore.SegmentHandle;
+pub const ScreenVec = @import("screen/screen_vec.zig");
+pub const Styling = @import("screen/styling.zig").Styling;
+pub const Element = @import("tree/element.zig");
+pub const Tree = @import("tree/tree.zig");
 
 pub const Widgets = struct {
     pub const Container = @import("widgets/container.zig");
@@ -31,6 +28,6 @@ test {
     _ = @import("common/gap_buffer.zig");
     _ = @import("tree/tree.zig");
 
-    const std = @import("std");
-    std.testing.refAllDecls(@This());
+    const testing = @import("testing.zig");
+    testing.refAllDeclsRecursive(@This());
 }

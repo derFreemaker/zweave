@@ -1,3 +1,5 @@
+// from: https://symbl.cc/en/unicode/blocks/box-drawing/
+
 // light and heavy solid lines
 
 pub const LightHorizontal = "─";

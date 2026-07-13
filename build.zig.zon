@@ -5,16 +5,16 @@
     .minimum_zig_version = "0.15.2",
     .dependencies = .{
         .zttio = .{
-            .url = "git+https://github.com/derFreemaker/zttio#1d0318c6198058fb7c62219a7be918540c5b4ffe",
-            .hash = "zttio-0.4.0-e5eFcA6DAwB2r2d2ukioV8sbil_r9uPH9ISud36rB8Gz",
+            .url = "git+https://github.com/derFreemaker/zttio#6d7d36fe1b12e828829d16003a8e7a0ffe24af23",
+            .hash = "zttio-0.4.0-e5eFcKulAwC5mRS3CydQu8NAYcphZ5hT0AVYXojwkLbG",
         },
         .uucode = .{
             .url = "git+https://github.com/jacobsandlund/uucode#2826a37a4562284fdacd8fa029d49509cc9bffcd",
             .hash = "uucode-0.2.0-ZZjBPlK5VADj7fdoq7G8LIHzD5o6FSkcBXXrRWr4jnrA",
         },
         .tracy = .{
-            .url = "git+https://codeberg.org/Games-by-Mason/tracy_zig#4921b7dec5e665793f9f87d6ec9336ad450543a4",
-            .hash = "tracy-0.0.0-R7l8BVhNAQBAcLUKg_R72dyRyWRhzTLf1lTvcqVTb9Nc",
+            .url = "git+https://codeberg.org/Freemaker/tracy_zig?ref=simplify_options#14638ed9f83d436efc8f24ae5f2160082137864f",
+            .hash = "tracy-1.0.0+0.13.1-R7l8BWxSAQCJkialb9uExuV_4tMRm4I8w_j-NJCCk-_O",
         },
     },
     .paths = .{

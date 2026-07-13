@@ -1,16 +1,17 @@
 const std = @import("std");
+
 const tracy = @import("tracy");
 
-const ScreenVec = @import("../common/screen_vec.zig");
-const Element = @import("../tree/element.zig");
 const GraphemeGapBuffer = @import("../common/grapheme_gap_buffer.zig");
 const LineIterator = @import("../common/line_iterator.zig");
+const ScreenVec = @import("../screen/screen_vec.zig");
+const Element = @import("../tree/element.zig");
 
 const TextInput = @This();
 
 allocator: std.mem.Allocator,
 buf: GraphemeGapBuffer,
-cached_size: ?ScreenVec = null,
+cached_size: ScreenVec = .zero,
 
 pub fn init(allocator: std.mem.Allocator) std.mem.Allocator.Error!TextInput {
     return TextInput{
@@ -31,7 +32,6 @@ pub fn element(self: *TextInput) Element.Interface {
         .draw = draw,
 
         .onEvent = onEvent,
-        .onClick = onClick,
     } };
 }
 
@@ -51,14 +51,17 @@ fn computeLayout(self_ctx: Element.SelfContext, ctx: *const Element.ComputeLayou
 
     const self = self_ctx.get(TextInput);
     if (self.buf.len() == 0) {
-        return .{
+        const size = ScreenVec{
             .x = 1,
             .y = 1,
         };
+        self.cached_size = size;
+
+        return size;
     }
 
-    if (self.cached_size) |size| {
-        return size;
+    if (!self.cached_size.isNull()) {
+        return self.cached_size;
     }
 
     var height: u16 = 1;
@@ -106,11 +109,10 @@ fn computeLayout(self_ctx: Element.SelfContext, ctx: *const Element.ComputeLayou
         }
     }
 
-    // ensure we are never writing into the most right cell in the terminal, since the cursor can not follow to the right side of the cell
-    const width = if (max_width < ctx.viewport_size.x) max_width else (if (ctx.viewport_size.x < 1) 0 else ctx.viewport_size.x - 1);
-
+    // ensure we are never writing into the most right cell in the terminal,
+    // since the cursor can not follow to the right side of the cell
     const size = ScreenVec{
-        .x = width,
+        .x = @min(max_width, ctx.viewport_size.x -| 1),
         .y = height,
     };
     self.cached_size = size;
@@ -125,100 +127,118 @@ fn draw(self_ctx: Element.SelfContext, ctx: *const Element.DrawContext) Element.
     });
     defer trace_zone.end();
 
-    if (ctx.view.size.isNull()) {
-        if (ctx.tree.isFocused(self_ctx.handle)) {
-            ctx.view.setCursorPos(.zero);
-            ctx.view.setCursorShape(.blinking_bar);
-            ctx.view.setCursorVisibility(true);
+    const self = self_ctx.get(TextInput);
+
+    if (ctx.view.size.isNull() or self.cached_size.isNull()) {
+        if (ctx.isFocused(self_ctx.handle)) {
+            if (ctx.view.setCursorPos(.zero)) {
+                ctx.view.setCursorShape(.blinking_bar);
+                ctx.view.setCursorVisibility(true);
+            }
         }
         return;
     }
 
-    const self = self_ctx.get(TextInput);
-    var view_writer = ctx.view.writer(&.{});
+    const view = ctx.view;
+    var view_writer = view.writer(&.{}, .{});
     const writer = &view_writer.interface;
 
     try writer.writeAll(self.buf.firstHalf());
     try writer.flush();
 
-    if (ctx.tree.isFocused(self_ctx.handle) and
-        (view_writer.pos.x <= ctx.view.size.x and
-            view_writer.pos.y < ctx.view.size.y))
-    {
-        ctx.view.setCursorPos(view_writer.pos);
-        ctx.view.setCursorShape(.blinking_bar);
-        ctx.view.setCursorVisibility(true);
+    if (ctx.isFocused(self_ctx.handle)) {
+        if (view.setCursorPos(view_writer.pos)) {
+            view.setCursorShape(.blinking_bar);
+            view.setCursorVisibility(true);
+        }
     }
-
     try writer.writeAll(self.buf.secondHalf());
+
     try writer.flush();
 }
 
-fn onEvent(self_ctx: Element.SelfContext, ctx: *Element.OnEventContext) Element.OnEventError!void {
+fn onEvent(self_ctx: Element.SelfContext, ctx: *const Element.OnEventContext) Element.OnEventError!void {
     const self = self_ctx.get(TextInput);
-    if (!ctx.tree.isFocused(self_ctx.handle)) return;
 
-    switch (ctx.event.*) {
+    const Key = @import("zttio").Key;
+    const Mouse = @import("zttio").Mouse;
+    onEvent: switch (ctx.event.*) {
         .key_press => |key_press| {
-            if (key_press.matches(.left, .{})) {
-                ctx.consume();
+            if (!ctx.tree.isFocused(self_ctx.handle)) {
+                return;
+            }
 
-                if (self.buf.canMoveGapLeft(1)) {
-                    _ = self.buf.moveGapLeft(1);
+            switch (key_press.switchable()) {
+                Key.matches(.left, .{}) => {
+                    ctx.consume();
 
-                    // ctx.tree.markDirty(self_ctx.handle);
-                    self.cached_size = null;
-                }
-            } else if (key_press.matches(.right, .{})) {
-                ctx.consume();
+                    if (self.buf.canMoveGapLeft(1)) {
+                        _ = self.buf.moveGapLeft(1);
 
-                if (self.buf.canMoveGapRight(1)) {
-                    _ = self.buf.moveGapRight(1);
+                        self.cached_size = .zero;
+                    }
+                },
+                Key.matches(.right, .{}) => {
+                    ctx.consume();
 
-                    // ctx.tree.markDirty(self_ctx.handle);
-                    self.cached_size = null;
-                }
-            } else if (key_press.matches(.backspace, .{})) {
-                ctx.consume();
+                    if (self.buf.canMoveGapRight(1)) {
+                        _ = self.buf.moveGapRight(1);
 
-                if (self.buf.canGrowGapLeft(1)) {
-                    self.buf.growGapLeft(1);
+                        self.cached_size = .zero;
+                    }
+                },
+                Key.matches(.backspace, .{}) => {
+                    ctx.consume();
 
-                    // ctx.tree.markDirty(self_ctx.handle);
-                    self.cached_size = null;
-                }
-            } else if (key_press.matches(.enter, .{})) {
-                ctx.consume();
+                    if (self.buf.canGrowGapLeft(1)) {
+                        self.buf.growGapLeft(1);
 
-                try self.buf.insertGrapheme(self.allocator, "\n");
+                        self.cached_size = .zero;
+                    }
+                },
+                Key.matches(.enter, .{}) => {
+                    ctx.consume();
 
-                // ctx.tree.markDirty(self_ctx.handle);
-                self.cached_size = null;
-            } else if (key_press.text != .empty) {
-                ctx.consume();
+                    try self.buf.insertGrapheme(self.allocator, "\n");
 
-                try self.buf.insertGrapheme(self.allocator, key_press.text.get());
+                    self.cached_size = .zero;
+                },
+                else => {
+                    if (key_press.text != .empty) {
+                        ctx.consume();
 
-                // ctx.tree.markDirty(self_ctx.handle);
-                self.cached_size = null;
+                        try self.buf.insertGrapheme(self.allocator, key_press.text.get());
+
+                        self.cached_size = .zero;
+                    }
+                },
             }
         },
 
         .paste => |paste| {
+            if (!ctx.tree.isFocused(self_ctx.handle)) {
+                return;
+            }
+
             ctx.consume();
 
             try self.buf.insertGraphemeSlice(self.allocator, paste);
 
-            // ctx.tree.markDirty(self_ctx.handle);
-            self.cached_size = null;
+            self.cached_size = .zero;
+        },
+
+        .mouse => |mouse| switch (mouse.switchable()) {
+            Mouse.matches(.left, .press, .{}) => {
+                if (ctx.mouse_rel_pos == null) {
+                    break :onEvent;
+                }
+
+                ctx.consume();
+                try ctx.tree.setFocus(self_ctx.handle);
+            },
+            else => {},
         },
 
         else => {},
     }
-}
-
-fn onClick(self_ctx: Element.SelfContext, ctx: *Element.OnClickContext) Element.OnClickError!void {
-    try ctx.tree.setFocus(self_ctx.handle);
-
-    // ctx.tree.markDirty(self_ctx.handle);
 }

@@ -66,7 +66,7 @@ pub fn insertGrapheme(self: *GraphemeGapBuffer, allocator: std.mem.Allocator, gr
 }
 
 pub fn insertGraphemeSlice(self: *GraphemeGapBuffer, allocator: std.mem.Allocator, slice: []const u8) std.mem.Allocator.Error!void {
-    const Unicode = @import("unicode.zig");
+    const Unicode = @import("../unicode.zig");
 
     var grapheme_iter = Unicode.GraphemeClusterIterator.init(slice);
     while (grapheme_iter.next()) |grapheme| {

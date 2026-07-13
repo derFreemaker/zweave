@@ -1,16 +1,21 @@
 const std = @import("std");
+pub const GetDebugStrError = std.mem.Allocator.Error;
+pub const RegisterError = std.mem.Allocator.Error;
+pub const ComputeLayoutError = std.mem.Allocator.Error;
+pub const OnEventError = std.mem.Allocator.Error;
+
 const zttio = @import("zttio");
 
-const ScreenVec = @import("../common/screen_vec.zig");
-const Unicode = @import("../common/unicode.zig");
 const Handles = @import("../common/handles.zig");
-const LayoutData = @import("../layout/layout_data.zig");
-const Tree = @import("tree.zig");
-const ScreenView = @import("../screen/view.zig");
-const ScreenStore = @import("../screen/screen_store.zig");
 const Event = @import("../event.zig").Event;
+const LayoutData = @import("../layout/layout_data.zig");
+const ScreenStore = @import("../screen/screen_store.zig");
+const ScreenVec = @import("../screen/screen_vec.zig");
+const ScreenView = @import("../screen/view.zig");
+const Unicode = @import("../unicode.zig");
+const Tree = @import("tree.zig");
 
-pub const HandleStore = Handles.HandleStoreT(Element, u16);
+pub const HandleStore = Handles.HandleStoreT(Element, u32);
 pub const Handle = HandleStore.Handle;
 
 const Element = @This();
@@ -35,8 +40,7 @@ pub const Interface = struct {
         computeLayout: ?*const fn (self_ctx: SelfContext, ctx: *const ComputeLayoutContext) ComputeLayoutError!ScreenVec = null,
         draw: *const fn (self_ctx: SelfContext, ctx: *const DrawContext) DrawError!void,
 
-        onEvent: ?*const fn (self_ctx: SelfContext, ctx: *OnEventContext) OnEventError!void = passEventToChildren,
-        onClick: ?*const fn (self_ctx: SelfContext, ctx: *OnClickContext) OnClickError!void = passClickToChild,
+        onEvent: ?*const fn (self_ctx: SelfContext, ctx: *const OnEventContext) OnEventError!void = passEventToChildren,
     };
 
     ptr: *anyopaque,
@@ -48,25 +52,21 @@ pub const Interface = struct {
     pub const dummy = Interface{
         .ptr = &dummy_,
         .vtable = &VTable{
-            .computeLayout = struct {
-                pub fn func(self_ctx: SelfContext, ctx: *const ComputeLayoutContext) ComputeLayoutError!ScreenVec {
-                    _ = self_ctx;
-                    _ = ctx;
-
-                    return .zero;
-                }
-            }.func,
-
-            .draw = struct {
-                pub fn func(self_ctx: SelfContext, ctx: *const DrawContext) DrawError!void {
-                    _ = self_ctx;
-                    _ = ctx;
-
-                    return;
-                }
-            }.func,
+            .computeLayout = dummyComputeLayout,
+            .draw = dummyDraw,
         },
     };
+
+    fn dummyComputeLayout(self_ctx: SelfContext, ctx: *const ComputeLayoutContext) ComputeLayoutError!ScreenVec {
+        _ = self_ctx;
+        _ = ctx;
+        return .zero;
+    }
+
+    fn dummyDraw(self_ctx: SelfContext, ctx: *const DrawContext) DrawError!void {
+        _ = self_ctx;
+        _ = ctx;
+    }
 
     fn context(self: Interface) SelfContext {
         return SelfContext{
@@ -107,14 +107,8 @@ pub const Interface = struct {
         return self.vtable.draw(self.context(), ctx);
     }
 
-    pub fn onEvent(self: Interface, ctx: *OnEventContext) OnEventError!void {
+    pub fn onEvent(self: Interface, ctx: *const OnEventContext) OnEventError!void {
         if (self.vtable.onEvent) |func| {
-            return func(self.context(), ctx);
-        }
-    }
-
-    pub fn onClick(self: Interface, ctx: *OnClickContext) OnEventError!void {
-        if (self.vtable.onClick) |func| {
             return func(self.context(), ctx);
         }
     }
@@ -129,8 +123,6 @@ pub const SelfContext = struct {
     }
 };
 
-pub const GetDebugStrError = std.mem.Allocator.Error;
-
 pub const GetDebugStrContext = struct {
     const Context = @This();
 
@@ -141,8 +133,6 @@ pub const GetDebugStrContext = struct {
         return self.tree.get(self.handle);
     }
 };
-
-pub const RegisterError = std.mem.Allocator.Error;
 
 pub const RegisterContext = struct {
     const Context = @This();
@@ -155,8 +145,6 @@ pub const UnregisterContext = struct {
 
     tree: *Tree,
 };
-
-pub const ComputeLayoutError = std.mem.Allocator.Error;
 
 pub const ComputeLayoutContext = struct {
     const Context = @This();
@@ -194,6 +182,8 @@ pub const DrawContext = struct {
     view: ScreenView,
     screen_store: *const ScreenStore,
 
+    mouse_rel_pos: ?ScreenVec,
+
     pub inline fn strWidth(self: *const Context, str: []const u8) usize {
         return self.view.strWidth(str);
     }
@@ -202,17 +192,21 @@ pub const DrawContext = struct {
         return self.tree.isFocused(handle);
     }
 
-    pub inline fn child(self: *const DrawContext, view: ScreenView) DrawContext {
-        return DrawContext{
+    pub inline fn isHovered(self: *const Context) bool {
+        return self.mouse_rel_pos != null;
+    }
+
+    pub inline fn child(self: *const Context, view: ScreenView, rel_pos: ?ScreenVec) Context {
+        return Context{
             .tree = self.tree,
 
             .view = view,
             .screen_store = self.screen_store,
+
+            .mouse_rel_pos = rel_pos,
         };
     }
 };
-
-pub const OnEventError = std.mem.Allocator.Error;
 
 pub const OnEventContext = struct {
     const Context = @This();
@@ -220,57 +214,55 @@ pub const OnEventContext = struct {
     tree: *Tree,
 
     event: *const Event,
-    consumed: bool = false,
+    consumed: ?*bool,
 
-    pub inline fn consume(self: *Context) void {
-        self.consumed = true;
+    mouse_rel_pos: ?ScreenVec,
+
+    pub inline fn isConsumed(self: *const Context) bool {
+        return if (self.consumed) |state| state.* else false;
     }
-};
 
-pub fn passEventToChildren(self_ctx: SelfContext, ctx: *OnEventContext) OnEventError!void {
-    var child_iter = ctx.tree.childs(self_ctx.handle);
-    while (child_iter.peek()) |child_handle| : (child_iter.toss()) {
-        const child = ctx.tree.get(child_handle);
-        try child.interface.onEvent(ctx);
-
-        if (ctx.consumed) break;
+    pub inline fn consume(self: *const Context) void {
+        if (self.consumed) |state| {
+            state.* = true;
+        }
     }
-}
 
-pub const OnClickError = std.mem.Allocator.Error;
+    pub inline fn isHovered(self: *const Context) bool {
+        return self.mouse_rel_pos != null;
+    }
 
-pub const OnClickContext = struct {
-    const Context = @This();
-
-    tree: *Tree,
-
-    pos: ScreenVec,
-
-    pub inline fn child(self: *const Context, pos: ScreenVec) OnClickContext {
-        return OnClickContext{
+    pub inline fn child(self: *const Context, rel_pos: ?ScreenVec) Context {
+        return Context{
             .tree = self.tree,
 
-            .pos = pos,
+            .event = self.event,
+            .consumed = self.consumed,
+
+            .mouse_rel_pos = rel_pos,
         };
     }
 };
 
-pub fn passClickToChild(self_ctx: SelfContext, ctx: *OnClickContext) OnClickError!void {
+pub fn passEventToChildren(self_ctx: SelfContext, ctx: *const OnEventContext) OnEventError!void {
     var child_iter = ctx.tree.childs(self_ctx.handle);
     while (child_iter.peek()) |child_handle| : (child_iter.toss()) {
-        const child_data = ctx.tree.getLayoutData(child_handle);
-        if (!child_data.pos.inside(ctx.pos)) {
-            continue;
-        }
-
-        const rel_pos = ctx.pos.sub(child_data.pos);
-        if (!rel_pos.inside(child_data.size)) {
-            continue;
-        }
-
         const child = ctx.tree.get(child_handle);
-        var child_ctx = ctx.child(rel_pos);
-        try child.interface.onClick(&child_ctx);
-        break;
+
+        var rel_pos: ?ScreenVec = null;
+        if (ctx.mouse_rel_pos) |cur_rel_pos| {
+            const child_data = ctx.tree.getLayoutData(child_handle);
+            rel_pos = cur_rel_pos.subOverflow(child_data.pos) catch null;
+            if (rel_pos) |pos| {
+                if (pos.x >= child_data.size.x or pos.y >= child_data.size.y) {
+                    rel_pos = null;
+                }
+            }
+        }
+
+        const child_ctx = ctx.child(rel_pos);
+        try child.interface.onEvent(&child_ctx);
+
+        if (ctx.isConsumed()) break;
     }
 }

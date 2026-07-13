@@ -1,4 +1,4 @@
-const ScreenVec = @import("../common/screen_vec.zig");
+const ScreenVec = @import("../screen/screen_vec.zig");
 
 const LayoutData = @This();
 

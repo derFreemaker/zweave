@@ -1,3 +1,5 @@
+const std = @import("std");
+
 const ScreenVec = @This();
 
 pub const zero = ScreenVec{
@@ -12,6 +14,10 @@ pub inline fn isNull(self: ScreenVec) bool {
     return self.x == 0 or self.y == 0;
 }
 
+pub inline fn eql(self: ScreenVec, other: ScreenVec) bool {
+    return self.x == other.x and self.y == other.y;
+}
+
 pub inline fn inside(self: ScreenVec, other: ScreenVec) bool {
     return self.x <= other.x and self.y <= other.y;
 }
@@ -23,7 +29,14 @@ pub fn scale(self: ScreenVec, x: f32, y: f32) ScreenVec {
     };
 }
 
-/// clamps to zero
+pub inline fn subOverflow(self: ScreenVec, other: ScreenVec) error{Overflow}!ScreenVec {
+    return ScreenVec{
+        .x = try std.math.sub(u16, self.x, other.x),
+        .y = try std.math.sub(u16, self.y, other.y),
+    };
+}
+
+/// Does a saturating subtraction.
 pub inline fn sub(self: ScreenVec, other: ScreenVec) ScreenVec {
     return ScreenVec{
         .x = self.x -| other.x,

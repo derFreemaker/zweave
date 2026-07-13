@@ -1,15 +1,18 @@
 const std = @import("std");
 
-const ScreenVec = @import("../common/screen_vec.zig");
 const Cell = @import("../screen/cell.zig");
 const ScreenStore = @import("../screen/screen_store.zig");
-const Element = @import("../tree/element.zig");
-
+const ScreenVec = @import("../screen/screen_vec.zig");
+const Styling = @import("../screen/styling.zig").Styling;
 const BoxDrawing = @import("../symbols/box_drawing.zig");
+const Element = @import("../tree/element.zig");
 
 const Frame = @This();
 
-padding: Padding = .none,
+padding: Padding = .{ .sides = .{
+    .left = 1,
+    .right = 1,
+} },
 border: Border = .none,
 border_style: BorderStyle = .{},
 
@@ -22,6 +25,8 @@ pub fn element(self: *Frame) Element.Interface {
 
         .computeLayout = computeLayout,
         .draw = draw,
+
+        .onEvent = onEvent,
     } };
 }
 
@@ -35,23 +40,15 @@ fn getDebugStr(self_ctx: Element.SelfContext, ctx: *const Element.GetDebugStrCon
 fn computeLayout(self_ctx: Element.SelfContext, ctx: *const Element.ComputeLayoutContext) Element.ComputeLayoutError!ScreenVec {
     const self = self_ctx.get(Frame);
 
-    var border = switch (self.border) {
-        .none => ScreenVec.zero,
-        .single_cell => ScreenVec{ .x = 2, .y = 2 },
-    };
-    if (self.label.maybeValid()) |_| {
-        border = border.max(ScreenVec{ .x = 0, .y = 1 });
-    }
-
-    const self_element = ctx.tree.getMut(self_ctx.handle);
-    const child_handle = self_element.first_child.maybeValid() orelse {
-        if (self.label.maybeValid()) |label_handle| {
-            border = ScreenVec{
-                .x = @intCast(border.x + self.label_offset + ctx.strWidth(ctx.screen_store.getStr(label_handle))),
-                .y = @max(border.y, 1),
-            };
+    const border = blk: {
+        var border = switch (self.border) {
+            .none => ScreenVec.zero,
+            .single_cell => ScreenVec{ .x = 2, .y = 2 },
+        };
+        if (self.label.maybeValid()) |_| {
+            border = border.max(ScreenVec{ .x = 0, .y = 1 });
         }
-        return border;
+        break :blk border;
     };
 
     const padding = switch (self.padding) {
@@ -60,11 +57,23 @@ fn computeLayout(self_ctx: Element.SelfContext, ctx: *const Element.ComputeLayou
         .sides => |sides| ScreenVec{ .x = sides.left + sides.right, .y = sides.top + sides.bottom },
     };
 
-    const child = ctx.tree.getMut(child_handle);
+    const label_width: u16 = if (self.label.maybeValid()) |label_handle|
+        @intCast(self.label_offset + ctx.strWidth(ctx.screen_store.getStr(label_handle).*))
+    else
+        0;
+
+    const min_size: ScreenVec = blk: {
+        break :blk border.add(padding).add(ScreenVec{ .x = label_width, .y = 0 });
+    };
+
+    const self_element = ctx.tree.get(self_ctx.handle);
+    const child_handle = self_element.first_child.maybeValid() orelse return min_size;
+
+    const child = ctx.tree.get(child_handle);
 
     const child_available = ctx.available.sub(padding).sub(border);
     const child_ctx = ctx.child(child_available);
-    const child_size = (try child.interface.computeLayout(&child_ctx)).min(child_available);
+    const child_size = (try child.interface.computeLayout(&child_ctx)).max(ScreenVec{ .x = label_width -| padding.x, .y = 0 });
 
     const padding_top_left = switch (self.padding) {
         .none => ScreenVec.zero,
@@ -83,7 +92,7 @@ fn computeLayout(self_ctx: Element.SelfContext, ctx: *const Element.ComputeLayou
         border_top_left = border_top_left.max(ScreenVec{ .x = 0, .y = 1 });
     }
 
-    const child_data = ctx.tree.getLayoutDataMut(child_handle);
+    const child_data = ctx.tree.getLayoutData(child_handle);
     child_data.pos = padding_top_left.add(border_top_left);
     child_data.size = child_size;
 
@@ -94,7 +103,7 @@ fn computeLayout(self_ctx: Element.SelfContext, ctx: *const Element.ComputeLayou
             .single_cell => 2,
         };
 
-        const width_label = ctx.strWidth(ctx.screen_store.getStr(label_handle));
+        const width_label = ctx.strWidth(ctx.screen_store.getStr(label_handle).*);
 
         requested_size = requested_size.max(ScreenVec{ .x = @intCast(self.label_offset + width_label + width_border), .y = 1 });
     }
@@ -108,54 +117,68 @@ fn draw(self_ctx: Element.SelfContext, ctx: *const Element.DrawContext) Element.
     draw_frame: switch (self.border) {
         .none => {
             if (self.label.maybeValid()) |label_handle| {
-                _ = try ctx.view.write(0, self.label_offset, ctx.screen_store.getStr(label_handle), .{});
+                _ = try ctx.view.write(0, self.label_offset, ctx.screen_store.getStr(label_handle).*, .{});
             }
         },
         .single_cell => |symbols| {
-            _ = ctx.view.writeCell(null, 0, 0, symbols.top_left, .{
-                .style = self.border_style.top_left,
+            _ = ctx.view.writeCell(0, 0, symbols.top_left, .{
+                .styling = self.border_style.top_left,
             });
 
             if (ctx.view.size.x < 2) {
                 break :draw_frame;
             } else if (ctx.view.size.x > 2) {
-                ctx.view.fill(null, 0, 1, 1, ctx.view.size.x - 2, symbols.top, .{
-                    .style = self.border_style.top,
+                ctx.view.fill(0, 1, 1, ctx.view.size.x - 2, symbols.top, .{
+                    .styling = self.border_style.top,
                 });
 
                 if (self.label.maybeValid()) |label_handle| {
-                    _ = try ctx.view.write(0, 1 + self.label_offset, ctx.screen_store.getStr(label_handle), .{
+                    _ = try ctx.view.write(0, 1 + self.label_offset, ctx.screen_store.getStr(label_handle).*, .{
                         .max_width = ctx.view.size.x -| 2 -| self.label_offset,
                     });
                 }
 
-                ctx.view.fill(null, ctx.view.size.y -| 1, 1, 1, ctx.view.size.x - 2, symbols.bottom, .{
-                    .style = self.border_style.bottom,
+                ctx.view.fill(ctx.view.size.y -| 1, 1, 1, ctx.view.size.x - 2, symbols.bottom, .{
+                    .styling = self.border_style.bottom,
                 });
             }
 
-            _ = ctx.view.writeCell(null, 0, ctx.view.size.x -| 1, symbols.top_right, .{
-                .style = self.border_style.top_right,
+            _ = ctx.view.writeCell(0, ctx.view.size.x -| 1, symbols.top_right, .{
+                .styling = self.border_style.top_right,
             });
 
-            _ = ctx.view.writeCell(null, ctx.view.size.y -| 1, 0, symbols.bottom_left, .{
-                .style = self.border_style.bottom_left,
+            _ = ctx.view.writeCell(ctx.view.size.y -| 1, 0, symbols.bottom_left, .{
+                .styling = self.border_style.bottom_left,
             });
 
             if (ctx.view.size.y > 2) {
-                ctx.view.fill(null, 1, 0, ctx.view.size.y - 2, 1, symbols.left, .{
-                    .style = self.border_style.left,
+                ctx.view.fill(1, 0, ctx.view.size.y - 2, 1, symbols.left, .{
+                    .styling = self.border_style.left,
                 });
 
-                ctx.view.fill(null, 1, ctx.view.size.x -| 1, ctx.view.size.y - 2, 1, symbols.right, .{
-                    .style = self.border_style.right,
+                ctx.view.fill(1, ctx.view.size.x -| 1, ctx.view.size.y - 2, 1, symbols.right, .{
+                    .styling = self.border_style.right,
                 });
             }
 
-            _ = ctx.view.writeCell(null, ctx.view.size.y -| 1, ctx.view.size.x -| 1, symbols.bottom_right, .{
-                .style = self.border_style.bottom_right,
+            _ = ctx.view.writeCell(ctx.view.size.y -| 1, ctx.view.size.x -| 1, symbols.bottom_right, .{
+                .styling = self.border_style.bottom_right,
             });
         },
+    }
+
+    const padding = switch (self.padding) {
+        .none => ScreenVec.zero,
+        .all => |v| ScreenVec{ .x = v * 2, .y = v * 2 },
+        .sides => |sides| ScreenVec{ .x = sides.left + sides.right, .y = sides.top + sides.bottom },
+    };
+
+    var border = switch (self.border) {
+        .none => ScreenVec.zero,
+        .single_cell => ScreenVec{ .x = 2, .y = 2 },
+    };
+    if (self.label.maybeValid()) |_| {
+        border = border.max(ScreenVec{ .x = 0, .y = 1 });
     }
 
     const self_element = ctx.tree.get(self_ctx.handle);
@@ -164,14 +187,56 @@ fn draw(self_ctx: Element.SelfContext, ctx: *const Element.DrawContext) Element.
     };
 
     const child_layout_data = ctx.tree.getLayoutData(child_handle);
-    const child_view = ctx.view.viewVec(.{
+    const child_view = ctx.view.view(.{
         .pos = child_layout_data.pos,
-        .size = child_layout_data.size,
+        .size = child_layout_data.size.min(ctx.view.size.sub(padding).sub(border)),
     });
 
-    const child_ctx = ctx.child(child_view);
+    const child_rel_pos: ?ScreenVec = blk: {
+        const rel_pos = ctx.mouse_rel_pos orelse break :blk null;
+        var pos = rel_pos.sub(child_layout_data.pos);
+
+        const child_end = child_layout_data.pos.add(child_layout_data.size);
+        if (rel_pos.x >= child_end.x) {
+            pos.x = child_layout_data.size.x -| 1;
+        }
+        if (rel_pos.y >= child_end.y) {
+            pos.y = child_layout_data.size.y -| 1;
+        }
+
+        break :blk pos;
+    };
+
+    const child_ctx = ctx.child(child_view, child_rel_pos);
     const child = ctx.tree.get(child_handle);
     try child.interface.draw(&child_ctx);
+}
+
+fn onEvent(self_ctx: Element.SelfContext, ctx: *const Element.OnEventContext) Element.OnEventError!void {
+    const child_handle = ctx.tree.get(self_ctx.handle).first_child;
+    if (child_handle.isInvalid()) {
+        return;
+    }
+    const child_layout_data = ctx.tree.getLayoutData(child_handle);
+
+    const child_rel_pos: ?ScreenVec = blk: {
+        const rel_pos = ctx.mouse_rel_pos orelse break :blk null;
+        var pos = rel_pos.sub(child_layout_data.pos);
+
+        const child_end = child_layout_data.pos.add(child_layout_data.size);
+        if (rel_pos.x >= child_end.x) {
+            pos.x = child_layout_data.size.x -| 1;
+        }
+        if (rel_pos.y >= child_end.y) {
+            pos.y = child_layout_data.size.y -| 1;
+        }
+
+        break :blk pos;
+    };
+
+    const child_ctx = ctx.child(child_rel_pos);
+    const child = ctx.tree.get(child_handle);
+    try child.interface.onEvent(&child_ctx);
 }
 
 pub const Padding = union(enum) {
@@ -255,13 +320,13 @@ pub const Border = union(enum) {
 };
 
 pub const BorderStyle = struct {
-    top: ScreenStore.StyleHandle = .invalid,
-    bottom: ScreenStore.StyleHandle = .invalid,
-    left: ScreenStore.StyleHandle = .invalid,
-    right: ScreenStore.StyleHandle = .invalid,
+    top: ScreenStore.StylingHandle = .invalid,
+    bottom: ScreenStore.StylingHandle = .invalid,
+    left: ScreenStore.StylingHandle = .invalid,
+    right: ScreenStore.StylingHandle = .invalid,
 
-    top_left: ScreenStore.StyleHandle = .invalid,
-    top_right: ScreenStore.StyleHandle = .invalid,
-    bottom_left: ScreenStore.StyleHandle = .invalid,
-    bottom_right: ScreenStore.StyleHandle = .invalid,
+    top_left: ScreenStore.StylingHandle = .invalid,
+    top_right: ScreenStore.StylingHandle = .invalid,
+    bottom_left: ScreenStore.StylingHandle = .invalid,
+    bottom_right: ScreenStore.StylingHandle = .invalid,
 };

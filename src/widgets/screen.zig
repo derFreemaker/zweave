@@ -1,15 +1,17 @@
 const std = @import("std");
+
 const tracy = @import("tracy");
 const zttio = @import("zttio");
 
-const Unicode = @import("../common/unicode.zig");
-const ScreenVec = @import("../common/screen_vec.zig");
 const UnderlyingScreen = @import("../screen/screen.zig");
-const ScreenView = @import("../screen/view.zig");
 const ScreenStore = @import("../screen/screen_store.zig");
+const ScreenVec = @import("../screen/screen_vec.zig");
+const Styling = @import("../screen/styling.zig").Styling;
+const ScreenView = @import("../screen/view.zig");
 const Element = @import("../tree/element.zig");
+const Unicode = @import("../unicode.zig");
 
-const Screen = @import("screen.zig");
+const Screen = @This();
 
 view: ScreenView,
 
@@ -19,19 +21,14 @@ pub fn init(allocator: std.mem.Allocator, opts: ScreenOptions) std.mem.Allocator
 
     screen.* = try UnderlyingScreen.init(
         allocator,
+        opts.store,
         opts.size,
         opts.width_method,
     );
     errdefer screen.deinit();
 
-    const view = screen.view(.{
-        .row = 0,
-        .col = 0,
-        .default_style = opts.default_style,
-    });
-
     return Screen{
-        .view = view,
+        .view = screen.view(.{}),
     };
 }
 
@@ -73,8 +70,7 @@ fn draw(self_ctx: Element.SelfContext, ctx: *const Element.DrawContext) Element.
 }
 
 pub const ScreenOptions = struct {
+    store: *ScreenStore,
     size: ScreenVec,
     width_method: Unicode.WidthMethod,
-
-    default_style: ScreenStore.StyleHandle = .invalid,
 };

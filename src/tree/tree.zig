@@ -1,9 +1,9 @@
 const std = @import("std");
 
-const ScreenVec = @import("../common/screen_vec.zig");
-const LayoutData = @import("../layout/layout_data.zig");
-const Element = @import("element.zig");
 const Event = @import("../event.zig").Event;
+const LayoutData = @import("../layout/layout_data.zig");
+const ScreenVec = @import("../screen/screen_vec.zig");
+const Element = @import("element.zig");
 
 const Tree = @This();
 
@@ -50,8 +50,14 @@ pub fn clear(self: *Tree) void {
     self.handle_store.clear();
 }
 
-fn grow(self: *Tree) std.mem.Allocator.Error!void {
-    const new_size = self.elements.len + self.elements.len;
+fn grow(self: *Tree, minimum_size: usize) std.mem.Allocator.Error!void {
+    const new_size = blk: {
+        var new_size = self.elements.len + self.elements.len;
+        while (new_size < minimum_size) {
+            new_size *= 2;
+        }
+        break :blk new_size;
+    };
 
     if (self.allocator.remap(self.elements, new_size)) |new_elements| {
         self.elements = new_elements;
@@ -86,12 +92,12 @@ pub fn create(self: *Tree, interface: Element.Interface) Element.RegisterError!E
 
     const element: *Element = blk: {
         if (handle.index.value() > self.elements.len) {
-            try self.grow();
+            try self.grow(handle.index.value());
         }
         break :blk &self.elements[handle.index.value()];
     };
 
-    const layout_data = self.getLayoutDataMut(handle);
+    const layout_data = self.getLayoutData(handle);
     layout_data.* = .zero;
 
     element.* = Element{
@@ -108,7 +114,9 @@ pub fn create(self: *Tree, interface: Element.Interface) Element.RegisterError!E
 }
 
 pub fn destroy(self: *Tree, handle: Element.Handle) void {
-    if (!self.isValid(handle)) return;
+    if (!self.isValid(handle)) {
+        return;
+    }
     const element = self.get(handle);
 
     const ctx = Element.UnregisterContext{
@@ -120,7 +128,7 @@ pub fn destroy(self: *Tree, handle: Element.Handle) void {
 
     var child_iter = self.childs(handle);
     while (child_iter.peek()) |child_handle| : (child_iter.toss()) {
-        const child = self.getMut(child_handle);
+        const child = self.get(child_handle);
 
         child.parent = .invalid;
         child.prev_sibling = .invalid;
@@ -131,31 +139,21 @@ pub fn destroy(self: *Tree, handle: Element.Handle) void {
     self.handle_store.destroy(handle);
 }
 
-pub fn get(self: *const Tree, handle: Element.Handle) *const Element {
-    std.debug.assert(self.isValid(handle));
+pub fn get(self: *const Tree, handle: Element.Handle) *Element {
     return &self.elements[handle.index.value()];
 }
 
-pub fn getMut(self: *Tree, handle: Element.Handle) *Element {
-    std.debug.assert(self.isValid(handle));
-    return &self.elements[handle.index.value()];
-}
-
-pub fn getLayoutData(self: *const Tree, handle: Element.Handle) *const LayoutData {
-    std.debug.assert(self.isValid(handle));
-    return &self.layout_data[handle.index.value()];
-}
-
-pub fn getLayoutDataMut(self: *Tree, handle: Element.Handle) *LayoutData {
-    std.debug.assert(self.isValid(handle));
+pub fn getLayoutData(self: *const Tree, handle: Element.Handle) *LayoutData {
     return &self.layout_data[handle.index.value()];
 }
 
 pub fn insertChildren(self: *Tree, parent_handle: Element.Handle, idx: usize, children: []const Element.Handle) void {
     std.debug.assert(self.isValid(parent_handle));
-    if (children.len == 0) return;
+    if (children.len == 0) {
+        return;
+    }
 
-    const parent = self.getMut(parent_handle);
+    const parent = self.get(parent_handle);
     var prev_child_handle: Element.Handle = blk: {
         if (idx == 0 or
             parent.first_child.isInvalid())
@@ -178,12 +176,12 @@ pub fn insertChildren(self: *Tree, parent_handle: Element.Handle, idx: usize, ch
     for (children) |child_handle| {
         std.debug.assert(self.isValid(child_handle));
 
-        const child = self.getMut(child_handle);
+        const child = self.get(child_handle);
         std.debug.assert(child.parent.isInvalid());
         child.parent = parent_handle;
 
         if (!prev_child_handle.isInvalid()) {
-            self.getMut(prev_child_handle).next_sibling = child_handle;
+            self.get(prev_child_handle).next_sibling = child_handle;
         }
 
         child.prev_sibling = prev_child_handle;
@@ -191,11 +189,11 @@ pub fn insertChildren(self: *Tree, parent_handle: Element.Handle, idx: usize, ch
     }
 
     const last_child_handle = children[children.len - 1];
-    const last_child = self.getMut(last_child_handle);
+    const last_child = self.get(last_child_handle);
     last_child.next_sibling = next_child_handle;
 
     if (!next_child_handle.isInvalid()) {
-        const next_child = self.getMut(next_child_handle);
+        const next_child = self.get(next_child_handle);
         next_child.prev_sibling = last_child_handle;
     }
 
@@ -208,22 +206,24 @@ pub fn insertChildren(self: *Tree, parent_handle: Element.Handle, idx: usize, ch
 
 pub fn addChildren(self: *Tree, parent_handle: Element.Handle, children: []const Element.Handle) void {
     std.debug.assert(self.isValid(parent_handle));
-    if (children.len == 0) return;
+    if (children.len == 0) {
+        return;
+    }
 
-    const parent = self.getMut(parent_handle);
+    const parent = self.get(parent_handle);
     var cur_child_handle = parent.last_child;
 
     for (children) |child_handle| {
         std.debug.assert(self.isValid(child_handle));
 
-        const child = self.getMut(child_handle);
+        const child = self.get(child_handle);
         std.debug.assert(child.parent.isInvalid());
         child.parent = parent_handle;
 
         if (cur_child_handle.isInvalid()) {
             parent.first_child = child_handle;
         } else {
-            const last_child = self.getMut(parent.last_child);
+            const last_child = self.get(parent.last_child);
             std.debug.assert(last_child.next_sibling.isInvalid());
 
             last_child.next_sibling = child_handle;
@@ -236,10 +236,12 @@ pub fn addChildren(self: *Tree, parent_handle: Element.Handle, children: []const
 }
 
 pub fn removeChild(self: *Tree, child_handle: Element.Handle) void {
-    const child = self.getMut(child_handle);
-    if (child.parent.isInvalid()) return;
+    const child = self.get(child_handle);
+    if (child.parent.isInvalid()) {
+        return;
+    }
 
-    const parent = self.getMut(child.parent);
+    const parent = self.get(child.parent);
     if (parent.first_child.eql(child_handle)) {
         if (!child.next_sibling.isInvalid()) {
             std.debug.assert(self.isValid(child.next_sibling));
@@ -258,11 +260,11 @@ pub fn removeChild(self: *Tree, child_handle: Element.Handle) void {
     }
 
     if (!child.next_sibling.isInvalid()) {
-        const next_sibling = self.getMut(child.next_sibling);
+        const next_sibling = self.get(child.next_sibling);
         std.debug.assert(next_sibling.prev_sibling.eql(child_handle));
 
         if (!child.prev_sibling.isInvalid()) {
-            const prev_sibling = self.getMut(child.prev_sibling);
+            const prev_sibling = self.get(child.prev_sibling);
             std.debug.assert(prev_sibling.next_sibling.eql(child_handle));
 
             next_sibling.prev_sibling = child.prev_sibling;
@@ -271,7 +273,7 @@ pub fn removeChild(self: *Tree, child_handle: Element.Handle) void {
             next_sibling.prev_sibling = .invalid;
         }
     } else if (!child.prev_sibling.isInvalid()) {
-        const prev_sibiling = self.getMut(child.prev_sibling);
+        const prev_sibiling = self.get(child.prev_sibling);
         std.debug.assert(prev_sibiling.next_sibling.eql(child_handle));
 
         prev_sibiling.next_sibling = .invalid;
@@ -295,7 +297,7 @@ pub const ChildIterator = struct {
         return ChildIterator{
             .tree = tree,
             .parent_handle = parent_handle,
-            .next_child = tree.get(parent_handle).first_child,
+            .next_child = if (parent_handle.isInvalid()) .invalid else tree.get(parent_handle).first_child,
         };
     }
 
@@ -312,6 +314,10 @@ pub const ChildIterator = struct {
     }
 
     pub fn count(self: *const ChildIterator) usize {
+        if (self.parent_handle.isInvalid()) {
+            return 0;
+        }
+
         var len: usize = 0;
         var cur_child = self.tree.get(self.parent_handle).first_child;
         while (!cur_child.isInvalid()) {
@@ -338,7 +344,7 @@ pub fn countChilds(self: *const Tree, handle: Element.Handle) usize {
 // pub fn markDirty(self: *Tree, handle: Element.Handle) void {
 //     if (!self.isValid(handle)) return;
 
-//     const element = self.getMut(handle);
+//     const element = self.get(handle);
 //     element.isDirty = true;
 //     if (element.parent.eql(.invalid)) {
 //         return;
@@ -346,7 +352,7 @@ pub fn countChilds(self: *const Tree, handle: Element.Handle) usize {
 
 //     var cur_parent_element_handle: Element.Handle = element.parent;
 //     while (!cur_parent_element_handle.isInvalid()) {
-//         const parent_element = self.getMut(cur_parent_element_handle);
+//         const parent_element = self.get(cur_parent_element_handle);
 //         if (parent_element.childIsDirty) break;
 
 //         parent_element.childIsDirty = true;
@@ -358,21 +364,53 @@ pub inline fn isFocused(self: *const Tree, handle: Element.Handle) bool {
     return self.focused_element.eql(handle);
 }
 
-pub inline fn removeFocus(self: *Tree) void {
+pub inline fn removeFocus(self: *Tree) Element.OnEventError!void {
+    if (self.focused_element.isInvalid()) {
+        return;
+    }
+
+    var ctx = Element.OnEventContext{
+        .tree = self,
+
+        .event = &.on_unfocus,
+
+        .consumed = null,
+        .mouse_rel_pos = null,
+    };
+    try self.get(self.focused_element).interface.onEvent(&ctx);
+
     self.focused_element = .invalid;
 }
 
 pub fn setFocus(self: *Tree, handle: Element.Handle) Element.OnEventError!void {
-    if (self.focused_element.eql(handle)) return;
+    if (self.focused_element.eql(handle)) {
+        return;
+    }
+
+    if (self.focused_element.maybeValid()) |focused_handle| {
+        var ctx = Element.OnEventContext{
+            .tree = self,
+
+            .event = &.on_unfocus,
+
+            .consumed = null,
+            .mouse_rel_pos = null,
+        };
+        try self.get(focused_handle).interface.onEvent(&ctx);
+    }
 
     self.focused_element = handle;
-
-    if (handle.isInvalid()) return;
+    if (handle.isInvalid()) {
+        return;
+    }
 
     var ctx = Element.OnEventContext{
         .tree = self,
 
         .event = &.on_focus,
+
+        .consumed = null,
+        .mouse_rel_pos = null,
     };
     try self.get(handle).interface.onEvent(&ctx);
 }

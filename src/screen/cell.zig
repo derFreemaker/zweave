@@ -1,13 +1,17 @@
 const std = @import("std");
 const builtin = @import("builtin");
+
 const zttio = @import("zttio");
 
 const IndexT = @import("../common/index.zig").IndexT;
-const Segment = @import("segment.zig");
 const Screen = @import("screen.zig");
 const ScreenStore = @import("screen_store.zig");
+const Segment = @import("segment.zig");
+const Styling = @import("styling.zig").Styling;
 
 pub const Index = IndexT(Cell, u32);
+
+const Cell = @This();
 
 comptime {
     if (builtin.mode == .Debug or builtin.mode == .ReleaseSafe) {
@@ -17,14 +21,12 @@ comptime {
     }
 }
 
-const Cell = @This();
-
 content: Content = .empty,
-style: ScreenStore.StyleHandle = .invalid,
+styling: ScreenStore.StylingHandle = .invalid,
 segment: ScreenStore.SegmentHandle = .invalid,
 
 pub fn eql(self: *const Cell, screen: *const Screen, other: *const Cell, other_screen: *const Screen) bool {
-    if (!self.style.eql(other.style) or
+    if (!self.styling.eql(other.styling) or
         !self.segment.eql(other.segment) or
         std.meta.activeTag(self.content) != std.meta.activeTag(other.content))
     {
@@ -33,7 +35,7 @@ pub fn eql(self: *const Cell, screen: *const Screen, other: *const Cell, other_s
 
     switch (self.content) {
         .empty,
-        .wide_continuation,
+        .skipped,
         => return true,
 
         .char => {
@@ -42,23 +44,21 @@ pub fn eql(self: *const Cell, screen: *const Screen, other: *const Cell, other_s
         .short => {
             return std.mem.eql(u8, self.content.readShort(), other.content.readShort());
         },
-        .long_local => {
-            const self_content = screen.getStr(self.content.long_local);
-            const other_content = other_screen.getStr(other.content.long_local);
+        .frame_long => {
+            const self_content = screen.getStr(self.content.frame_long);
+            const other_content = other_screen.getStr(other.content.frame_long);
 
             return std.mem.eql(u8, self_content, other_content);
         },
-        .long_shared => {
-            return self.content.long_shared.eql(other.content.long_shared);
-        },
-    }
-}
+        .shared_long => {
+            if (screen.store == other_screen.store) {
+                return self.content.shared_long.eql(other.content.shared_long);
+            }
 
-comptime {
-    if (builtin.mode == .Debug or builtin.mode == .ReleaseSafe) {
-        std.debug.assert(@sizeOf(Content) == 16);
-    } else {
-        std.debug.assert(@sizeOf(Content) == 8);
+            const self_content = screen.store.getStr(self.content.shared_long).*;
+            const other_content = other_screen.store.getStr(other.content.shared_long).*;
+            return std.mem.eql(u8, self_content, other_content);
+        },
     }
 }
 
@@ -70,9 +70,9 @@ pub const Content = union(enum) {
     /// null terminated if not fully used
     short: [CONTENT_SHORT_STR_MAX_LENGTH]u8,
     /// lives only during one frame
-    long_local: Screen.StrIndex,
-    long_shared: ScreenStore.StrHandle,
-    wide_continuation: void,
+    frame_long: Screen.StrIndex,
+    shared_long: ScreenStore.StrHandle,
+    skipped: void,
 
     pub inline fn readShort(self: *const Content) []const u8 {
         std.debug.assert(self.* == .short);
@@ -80,20 +80,17 @@ pub const Content = union(enum) {
         return self.short[0..end];
     }
 
-    /// 'store' only needs to be provided if a 'long_shared' content is given.
-    pub inline fn calcWidth(self: Content, screen: *const Screen, store: ?*const ScreenStore) u16 {
+    pub inline fn calcWidth(self: Content, screen: *const Screen) u16 {
         return @intCast(blk: switch (self) {
             .empty => break :blk 1,
             .char => break :blk 1,
             .short => break :blk screen.strWidth(self.readShort()),
-            .long_local => |index| break :blk screen.strWidth(screen.strs.items[index.value()]),
-            .long_shared => |handle| {
-                if (store == null) @panic("store was null, event though a 'long_shared' cell content was provided");
-
-                const str = store.?.getStr(handle);
+            .frame_long => |index| break :blk screen.strWidth(screen.strs.items[index.value()]),
+            .shared_long => |handle| {
+                const str = screen.store.getStr(handle).*;
                 break :blk screen.strWidth(str);
             },
-            .wide_continuation => break :blk 0,
+            .skipped => break :blk 0,
         });
     }
 
@@ -117,8 +114,16 @@ pub const Content = union(enum) {
                 return Content{ .short = buf };
             },
             else => {
-                std.debug.panic("str.len: ({d}) > max length: {d}", .{ str.len, CONTENT_SHORT_STR_MAX_LENGTH });
+                std.debug.panic("str ('{s}') len: {d} > max short length: {d}", .{ str, str.len, CONTENT_SHORT_STR_MAX_LENGTH });
             },
         };
     }
 };
+
+comptime {
+    if (builtin.mode == .Debug or builtin.mode == .ReleaseSafe) {
+        std.debug.assert(@sizeOf(Content) == 16);
+    } else {
+        std.debug.assert(@sizeOf(Content) == 8);
+    }
+}

@@ -75,6 +75,8 @@ pub fn deinit(self: *Screen) void {
 
     self.str_arena.deinit();
     self.strs.deinit(self.allocator);
+
+    self.styles.deinit(self.allocator);
 }
 
 /// this doesn't clear any data leaving the buffer in an undefined state

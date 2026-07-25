@@ -29,5 +29,6 @@ test {
     _ = @import("tree/tree.zig");
 
     const testing = @import("testing.zig");
+    @setEvalBranchQuota(2_000_000);
     testing.refAllDeclsRecursive(@This());
 }

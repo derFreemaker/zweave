@@ -261,21 +261,18 @@ pub fn fill(self: *const View, row: u16, col: u16, height: u16, width: u16, cont
     const amount = std.math.divFloor(u16, safe_width, cells) catch unreachable;
     const remainder = std.math.rem(u16, safe_width, cells) catch unreachable;
 
-    std.debug.assert(cells <= 32);
-    var fill_buf: [32]Cell = undefined;
-    const fill_view: []Cell = fill_buf[0..cells];
-    fill_buf[0] = Cell{
+    const content_cell = Cell{
         .content = content,
 
         .styling = opts.styling,
         .segment = opts.segment,
     };
-    @memset(fill_view[1..], Cell{
+    const skipped_cell = Cell{
         .content = .skipped,
 
         .styling = opts.styling,
         .segment = opts.segment,
-    });
+    };
 
     for (0..safe_height) |h| {
         const row_idx = self.getCellIndex(@intCast(fill_row + h), fill_col);
@@ -285,7 +282,8 @@ pub fn fill(self: *const View, row: u16, col: u16, height: u16, width: u16, cont
         var current_col_idx = row_idx;
         for (0..amount) |_| {
             const end_idx = current_col_idx.add(cells);
-            @memcpy(screen.buf[current_col_idx.value()..end_idx.value()], fill_view);
+            screen.buf[current_col_idx.value()] = content_cell;
+            @memset(screen.buf[current_col_idx.value() + 1 .. end_idx.value()], skipped_cell);
             current_col_idx = end_idx;
         }
 

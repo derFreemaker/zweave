@@ -13,8 +13,8 @@
             .hash = "uucode-0.2.0-ZZjBPlK5VADj7fdoq7G8LIHzD5o6FSkcBXXrRWr4jnrA",
         },
         .tracy = .{
-            .url = "git+https://codeberg.org/Freemaker/tracy_zig?ref=simplify_options#14638ed9f83d436efc8f24ae5f2160082137864f",
-            .hash = "tracy-1.0.0+0.13.1-R7l8BWxSAQCJkialb9uExuV_4tMRm4I8w_j-NJCCk-_O",
+            .url = "git+https://codeberg.org/Freemaker/tracy_zig?ref=simplify_options#add904ad62276ddc36eafb6552db114e95106269",
+            .hash = "tracy-1.0.0+0.13.1-R7l8BQ5TAQDIfWXlCRS2I5S0Pd0dGx8N3CouZ1lPUX-a",
         },
     },
     .paths = .{

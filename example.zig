@@ -48,8 +48,13 @@ pub fn main(init: std.process.Init) !u8 {
     };
     const event_allocator = trace_event_allocator.allocator();
 
-    var adapter = try zttio.Adapters.NativeAdapter.init(allocator, init.io, .stdin(), .stdout());
-    defer adapter.deinit(allocator);
+    const stdin_buf = try allocator.alloc(u8, 1024);
+    defer allocator.free(stdin_buf);
+
+    const stdout_buf = try allocator.alloc(u8, 1024 * 1024);
+    defer allocator.free(stdout_buf);
+
+    var adapter = try zttio.Adapters.NativeAdapter.init(init.io, .stdin(), stdin_buf, .stdout(), stdout_buf);
     var tty = try zttio.Tty.init(
         allocator,
         event_allocator,

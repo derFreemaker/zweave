@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 
 const tracy = @import("tracy");
 const zttio = @import("zttio");
@@ -21,7 +22,7 @@ allocator: std.mem.Allocator,
 
 store: *ScreenStore,
 
-buf: []Cell,
+buf: []align(32) Cell,
 
 str_arena: std.heap.ArenaAllocator,
 strs: std.ArrayList([]u8),
@@ -38,7 +39,12 @@ cursor_shape: CursorShape,
 // mouse_shape: zttio.Mouse.Shape = .default,
 
 pub fn init(allocator: std.mem.Allocator, store: *ScreenStore, size: ScreenVec, width_method: Unicode.WidthMethod) std.mem.Allocator.Error!Screen {
-    const buf = try allocator.alloc(Cell, @as(u32, size.x) * @as(u32, size.y));
+    const buf: []align(32) Cell = try allocator.allocWithOptions(
+        Cell,
+        @as(u32, size.x) * @as(u32, size.y),
+        std.mem.Alignment.@"32",
+        null,
+    );
     errdefer allocator.free(buf);
     @memset(buf, Cell{});
 
@@ -96,7 +102,12 @@ pub fn resize(self: *Screen, new_size: ScreenVec) std.mem.Allocator.Error!void {
         self.buf.len = new_capacity;
     } else {
         self.allocator.free(self.buf);
-        self.buf = try self.allocator.alloc(Cell, new_capacity);
+        self.buf = try self.allocator.allocWithOptions(
+            Cell,
+            new_capacity,
+            std.mem.Alignment.@"32",
+            null,
+        );
     }
 }
 
@@ -108,7 +119,13 @@ pub fn clear(self: *Screen) void {
     defer trace_zone.end();
 
     // we only clear what we need to
-    @memset(self.buf[0..self.len()], Cell{});
+    const buf = self.buf[0..self.len()];
+    if (comptime builtin.mode == .ReleaseFast and builtin.cpu.arch.isX86() and builtin.cpu.has(.x86, .avx2)) {
+        const mem = @import("../common/mem.zig");
+        mem.zeroBuffer(std.mem.sliceAsBytes(buf));
+    } else {
+        @memset(buf, Cell{});
+    }
 
     self.strs.clearRetainingCapacity();
     _ = self.str_arena.reset(.{ .retain_with_limit = 1024 * 1024 });

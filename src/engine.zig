@@ -227,13 +227,13 @@ pub fn renderNextFrame(self: *Engine, io: std.Io) Renderer.RenderError!void {
     }
 
     {
-        const start_flush = std.Io.Timestamp.now(io, .real);
-
         const flush_trace_zone = tracy.Zone.begin(.{
             .name = "[Engine]: flush to terminal",
             .src = @src(),
         });
         defer flush_trace_zone.end();
+
+        const start_flush = std.Io.Timestamp.now(io, .real);
 
         try self.writer.flush();
 

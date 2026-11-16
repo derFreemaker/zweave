@@ -39,7 +39,7 @@ pub fn SlotMap(comptime T: type, comptime HandleSize: type) type {
 
         pub fn create(self: *Self, allocator: std.mem.Allocator) std.mem.Allocator.Error!Handle {
             const handle = try self.store.create(allocator);
-            try self.ensureCapacity(allocator, handle.index.value());
+            try self.ensureCapacity(allocator, handle.index.value() + 1);
 
             return handle;
         }

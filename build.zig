@@ -64,7 +64,7 @@ pub fn build(b: *std.Build) void {
         .name = "example",
         .root_module = example_mod,
     });
-    // b.installArtifact(example);
+    b.installArtifact(example);
     // const example_asm = b.addInstallBinFile(example.getEmittedAsm(), "example_asm.s");
     // b.getInstallStep().dependOn(&example_asm.step);
 

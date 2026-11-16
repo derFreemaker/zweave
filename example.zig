@@ -3,6 +3,7 @@ const Block = struct {
     height: f32,
     content_handle: zweave.StrHandle,
     styling: zweave.StylingHandle = .invalid,
+    frame_parity: bool = false,
 
     pub fn element(self: *Block) zweave.Element.Interface {
         return .{ .ptr = self, .vtable = &.{
@@ -14,22 +15,52 @@ const Block = struct {
     }
 
     fn computeLayout(self_ctx: zweave.Element.SelfContext, ctx: *const zweave.Element.ComputeLayoutContext) zweave.Element.ComputeLayoutError!zweave.ScreenVec {
-        const self = self_ctx.get(Block);
+        _ = self_ctx; // autofix
+        // const self = self_ctx.get(Block);
 
-        return ctx.viewport_size.scale(self.width, self.height);
+        // return ctx.viewport_size.scale(self.width, self.height);
+        return ctx.viewport_size;
     }
 
     fn draw(self_ctx: zweave.Element.SelfContext, ctx: *const zweave.Element.DrawContext) zweave.Element.DrawError!void {
         const self = self_ctx.get(Block);
         const view = &ctx.view;
 
-        view.fill(0, 0, view.size.y, view.size.x, .{ .shared_long = self.content_handle }, .{
-            .styling = self.styling,
-        });
+        // view.fill(0, 0, view.size.y, view.size.x, .{ .shared_long = self.content_handle }, .{
+        //     .styling = self.styling,
+        // });
 
-        _ = try view.write(10, 2, " hi Block here! ", .{
-            .styling = self.styling,
-        });
+        // _ = try view.write(10, 2, " hi Block here! ", .{
+        //     .styling = self.styling,
+        // });
+
+        const styling_a = zttio.Styling{
+            .fg = .{ .rgb8 = .{ .r = 255, .g = 0, .b = 0 } },
+            .bg = .{ .c8 = .black },
+            .thickness = .bold,
+            .attrs = .{ .italic = .set },
+            .underline = .{ .style = .single },
+        };
+        const styling_b = zttio.Styling{
+            .fg = .{ .rgb8 = .{ .r = 0, .g = 255, .b = 0 } },
+            .bg = .{ .c8 = .bright_blue },
+            .thickness = .dim,
+            .attrs = .{ .strikethrough = .set },
+            .underline = .{ .style = .curly },
+        };
+        var style_parity = false;
+
+        for (0..view.size.y) |y| {
+            for (0..view.size.x) |x| {
+                const styling_handle = view.screen.addFrameStyling(if (style_parity) styling_a else styling_b) catch @panic("OOM");
+                _ = view.writeCell(@intCast(y), @intCast(x), .{ .char = if (self.frame_parity) 'x' else 'y' }, .{
+                    .styling = styling_handle,
+                });
+                style_parity = !style_parity;
+            }
+        }
+
+        self.frame_parity = !self.frame_parity;
     }
 };
 
@@ -51,7 +82,7 @@ pub fn main(init: std.process.Init) !u8 {
     const stdin_buf = try allocator.alloc(u8, 1024);
     defer allocator.free(stdin_buf);
 
-    const stdout_buf = try allocator.alloc(u8, 1024 * 1024);
+    const stdout_buf = try allocator.alloc(u8, 512 * 1024 * 1024);
     defer allocator.free(stdout_buf);
 
     var adapter = try zttio.Adapters.NativeAdapter.init(init.io, .stdin(), stdin_buf, .stdout(), stdout_buf);
@@ -103,45 +134,46 @@ pub fn main(init: std.process.Init) !u8 {
     const block_handle = try engine.tree.create(block.element());
     defer engine.tree.destroy(block_handle);
 
-    const frame_label_handle = try engine.screen_store.addStr(" test input ");
-    defer engine.screen_store.removeStr(frame_label_handle);
+    // const frame_label_handle = try engine.screen_store.addStr(" test input ");
+    // defer engine.screen_store.removeStr(frame_label_handle);
 
-    var frame = zweave.Widgets.Frame{
-        .border = .rounded,
+    // var frame = zweave.Widgets.Frame{
+    //     .border = .rounded,
 
-        .label = frame_label_handle,
-        .label_offset = 1,
-    };
-    const frame_handle = try engine.tree.create(frame.element());
-    defer engine.tree.destroy(frame_handle);
+    //     .label = frame_label_handle,
+    //     .label_offset = 1,
+    // };
+    // const frame_handle = try engine.tree.create(frame.element());
+    // defer engine.tree.destroy(frame_handle);
 
-    var screen = try zweave.Widgets.Screen.init(allocator, .{
-        .store = &engine.screen_store,
-        .size = .{ .x = 50, .y = 30 },
-        .width_method = tty.caps.unicode_width_method,
-    });
-    defer screen.deinit(allocator);
-    var screen_view_writer = screen.view.writer(&.{}, .{});
-    const screen_writer = &screen_view_writer.interface;
-    const screen_handle = try engine.tree.create(screen.element());
-    defer engine.tree.destroy(screen_handle);
+    // var screen = try zweave.Widgets.Screen.init(allocator, .{
+    //     .store = &engine.screen_store,
+    //     .size = .{ .x = 50, .y = 30 },
+    //     .width_method = tty.caps.unicode_width_method,
+    // });
+    // defer screen.deinit(allocator);
+    // var screen_view_writer = screen.view.writer(&.{}, .{});
+    // const screen_writer = &screen_view_writer.interface;
+    // const screen_handle = try engine.tree.create(screen.element());
+    // defer engine.tree.destroy(screen_handle);
 
-    var input = try zweave.Widgets.TextInput.init(allocator);
-    defer input.deinit();
-    const input_handle = try engine.tree.create(input.element());
-    defer engine.tree.destroy(input_handle);
+    // var input = try zweave.Widgets.TextInput.init(allocator);
+    // defer input.deinit();
+    // const input_handle = try engine.tree.create(input.element());
+    // defer engine.tree.destroy(input_handle);
 
-    engine.tree.addChildren(frame_handle, &.{input_handle});
+    // engine.tree.addChildren(frame_handle, &.{input_handle});
 
-    const frame_handle_2 = try engine.tree.create(frame.element());
-    defer engine.tree.destroy(frame_handle_2);
+    // const frame_handle_2 = try engine.tree.create(frame.element());
+    // defer engine.tree.destroy(frame_handle_2);
 
-    const input_handle_2 = try engine.tree.create(input.element());
-    defer engine.tree.destroy(input_handle_2);
+    // const input_handle_2 = try engine.tree.create(input.element());
+    // defer engine.tree.destroy(input_handle_2);
 
-    engine.tree.addChildren(frame_handle_2, &.{input_handle_2});
+    // engine.tree.addChildren(frame_handle_2, &.{input_handle_2});
 
-    engine.tree.addChildren(engine.root, &.{ screen_handle, frame_handle, block_handle, frame_handle_2 });
+    // engine.tree.addChildren(engine.root, &.{ screen_handle, frame_handle, block_handle, frame_handle_2 });
+    engine.tree.addChildren(engine.root, &.{block_handle});
 
     while (true) {
         var event = try tty.nextEvent();
@@ -170,19 +202,19 @@ pub fn main(init: std.process.Init) !u8 {
                         engine.showDebugTree(null);
                     },
                     Key.matches(.f3, .{}) => {
-                        if (!engine.tree.isFocused(input_handle)) {
-                            try engine.tree.setFocus(input_handle);
-                        } else {
-                            try engine.tree.removeFocus();
-                        }
+                        // if (!engine.tree.isFocused(input_handle)) {
+                        //     try engine.tree.setFocus(input_handle);
+                        // } else {
+                        //     try engine.tree.removeFocus();
+                        // }
                     },
                     Key.matches(.enter, .{}) => {
-                        try screen_writer.writeAll(input.buf.firstHalf());
-                        try screen_writer.writeAll(input.buf.secondHalf());
-                        try screen_writer.writeByte('\n');
-                        try screen_writer.flush();
+                        // try screen_writer.writeAll(input.buf.firstHalf());
+                        // try screen_writer.writeAll(input.buf.secondHalf());
+                        // try screen_writer.writeByte('\n');
+                        // try screen_writer.flush();
 
-                        input.buf.clearRetainingCapacity();
+                        // input.buf.clearRetainingCapacity();
                     },
                     else => {
                         consumed = false;
